@@ -53,6 +53,15 @@ CueZero's architecture consists of four core components:
 
 ## Results
 
+### Baseline Agents
+
+| Agent | Description | Skill Level |
+|-------|-------------|-------------|
+| **BasicAgent** | Rule-based agent using Bayesian optimization for shot selection. No tactical awareness, prone to fouls and safety errors. | 🎱 Novice player (unskilled) |
+| **BasicAgentPro** | Enhanced physics-based agent with offensive strategy, risk assessment, and long-term planning capabilities. | 🎯 Experienced player (skilled) |
+
+### CueZero vs Baselines
+
 | Opponent        | Win Rate | Rating |
 |-----------------|----------|--------|
 | BasicAgent      | **95%**  | 🏆 Excellent |
