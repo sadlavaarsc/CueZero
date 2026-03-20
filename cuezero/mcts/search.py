@@ -56,26 +56,37 @@ class MCTS:
 
     def __init__(self,
                  model,
-                 n_simulations=150,
+                 mode="full",
+                 n_simulations=None,
                  c_puct=1.414,
-                 max_depth=4,
-                 max_search_time=15.0,
+                 max_depth=None,
+                 max_search_time=None,
                  device="cuda" if torch.cuda.is_available() else "cpu"):
         """Initialize MCTS.
 
         Args:
             model: Policy-value neural network
-            n_simulations: Number of MCTS simulations
+            mode: "fast" or "full" - fast mode for quick decisions, full for strong play
+            n_simulations: Number of MCTS simulations (overrides mode if provided)
             c_puct: UCB exploration constant
-            max_depth: Maximum search depth
-            max_search_time: Maximum search time in seconds
+            max_depth: Maximum search depth (overrides mode if provided)
+            max_search_time: Maximum search time in seconds (overrides mode if provided)
             device: torch device for model inference
         """
         self.model = model
-        self.n_simulations = n_simulations
+        self.mode = mode
+
+        # Set parameters based on mode
+        if mode == "fast":
+            self.n_simulations = n_simulations if n_simulations is not None else 30
+            self.max_depth = max_depth if max_depth is not None else 2
+            self.max_search_time = max_search_time if max_search_time is not None else 3.0
+        else:  # full mode
+            self.n_simulations = n_simulations if n_simulations is not None else 150
+            self.max_depth = max_depth if max_depth is not None else 4
+            self.max_search_time = max_search_time if max_search_time is not None else 15.0
+
         self.c_puct = c_puct
-        self.max_depth = max_depth
-        self.max_search_time = max_search_time
         self.device = device
         self.ball_radius = 0.028575
 
@@ -92,7 +103,7 @@ class MCTS:
         from cuezero.env.state_encoder import StateEncoder
         self.state_preprocessor = StateEncoder()
 
-        print("Multi-step MCTS initialized.")
+        print(f"MCTS initialized (mode={mode}, simulations={self.n_simulations}, depth={self.max_depth}, timeout={self.max_search_time}s)")
 
     def _calc_angle_degrees(self, v):
         """Calculate angle in degrees from vector"""
@@ -185,7 +196,10 @@ class MCTS:
         # Shuffle and limit
         import random
         random.shuffle(actions)
-        return actions[:30]
+
+        # Limit candidates based on mode
+        max_actions = 10 if self.mode == "fast" else 30
+        return actions[:max_actions]
 
     def _random_action(self):
         """Generate random action"""
@@ -507,8 +521,8 @@ class MCTS:
             depth_factor = depth / remaining_hits if remaining_hits > 0 else 1.0
             value = depth_factor * value_output + (1 - depth_factor) * normalized_reward
 
-            # Recursive expansion
-            if shot is not None and raw_reward > -500 and normalized_reward > 0 and (depth + 1) < remaining_hits:
+            # Recursive expansion (disabled in fast mode for speed)
+            if self.mode != "fast" and shot is not None and raw_reward > -500 and normalized_reward > 0 and (depth + 1) < remaining_hits:
                 new_balls_state = {bid: ball for bid, ball in shot.balls.items()}
                 new_state_vec = self._balls_state_to_81(new_balls_state, my_targets=player_targets[root_player], table=table)
                 new_state_seq = node.state_seq[1:] + [new_state_vec]

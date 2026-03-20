@@ -83,8 +83,12 @@ AI展示了先进的战术意识，包括连续击球能力和战略防守 maneu
 
 ```bash
 # 创建 conda 环境（推荐 Python 3.10+）
-conda create -n cuezero python=3.10
-conda activate cuezero
+# 注意：本项目使用 'poolenv' 环境
+conda activate poolenv
+
+# 如果还没有环境，创建它：
+conda create -n poolenv python=3.10
+conda activate poolenv
 
 # 安装依赖
 pip install -r requirements.txt
@@ -99,6 +103,48 @@ pip install -e .
 # 对抗基线代理评估
 python scripts/evaluate.py
 ```
+
+### Web UI
+
+CueZero 包含一个基于 Web 的 UI，用于可视化和与 AI 交互。
+
+```bash
+# 启动 Web 服务器（mock 模式 - 默认）
+cd server
+python server.py
+
+# 使用 AI 模式（需要 dual_network_final.pt 模型文件）
+python server.py --ai
+
+# 访问 http://localhost:8000
+```
+
+Web UI 支持：
+- 可视化台球桌和球的位置
+- 执行击球并查看结果
+- 获取 AI 推荐的击球动作（AI 模式）
+
+### MCTS 模式
+
+MCTS 实现支持两种模式，用于不同的使用场景：
+
+```python
+from cuezero.mcts.search import MCTS
+
+# 快速模式：快速决策（30 次模拟，深度 2, 3 秒超时）
+mcts_fast = MCTS(model=model, mode="fast")
+
+# 完整模式：强对弈（150 次模拟，深度 4, 15 秒超时）
+mcts_full = MCTS(model=model, mode="full")
+
+# 自定义配置（覆盖模式默认值）
+mcts_custom = MCTS(model=model, mode="fast", n_simulations=50, max_depth=3)
+```
+
+| 模式   | 模拟次数 | 最大深度 | 超时   | 使用场景         |
+|--------|----------|----------|--------|------------------|
+| fast   | 30       | 2        | 3s     | 实时对弈、Web UI |
+| full   | 150      | 4        | 15s    | 离线分析、强对弈 |
 
 ### 训练
 
@@ -116,6 +162,17 @@ python scripts/train.py
 - `model.yaml`: 网络架构和输入/输出维度
 - `training.yaml`: 训练超参数
 - `mcts.yaml`: MCTS 搜索参数
+
+## 模型文件
+
+预训练模型文件 `dual_network_final.pt` 应放置在项目根目录。
+
+模型架构包括：
+- **SharedFeatureExtractor**: 处理 3x81 维状态向量（连续 3 局状态）
+- **PolicyHead**: 输出 5 维动作向量（速度、角度、偏移）
+- **ValueHead**: 输出胜率估计
+
+模型文件格式：PyTorch state dict，包含 `feature_extractor`、`policy_head` 和 `value_head` 组件。
 
 ## 项目结构
 

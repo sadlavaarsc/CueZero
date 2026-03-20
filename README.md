@@ -80,12 +80,16 @@ The AI demonstrates advanced tactical awareness, including continuous shot capab
 
 ## Quick Start
 
-### Environment Setup
+## Environment Setup
 
 ```bash
 # Create conda environment (Python 3.10+ recommended)
-conda create -n cuezero python=3.10
-conda activate cuezero
+# Note: This project uses the 'poolenv' environment
+conda activate poolenv
+
+# If you don't have the environment yet, create it:
+conda create -n poolenv python=3.10
+conda activate poolenv
 
 # Install dependencies
 pip install -r requirements.txt
@@ -94,12 +98,56 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+## Quick Start
+
 ### Running Evaluation
 
 ```bash
 # Evaluate against baseline agents
 python scripts/evaluate.py
 ```
+
+### Web UI
+
+CueZero includes a web-based UI for visualizing and interacting with the AI.
+
+```bash
+# Start the web server (mock mode - default)
+cd server
+python server.py
+
+# Start with AI mode (requires dual_network_final.pt model file)
+python server.py --ai
+
+# Access the UI at http://localhost:8000
+```
+
+The web UI supports:
+- Visualizing the billiard table and ball positions
+- Executing shots and seeing results
+- Getting AI-recommended shots (in AI mode)
+
+### MCTS Modes
+
+The MCTS implementation supports two modes for different use cases:
+
+```python
+from cuezero.mcts.search import MCTS
+
+# Fast mode: Quick decisions (30 simulations, depth 2, 3s timeout)
+mcts_fast = MCTS(model=model, mode="fast")
+
+# Full mode: Strong play (150 simulations, depth 4, 15s timeout)
+mcts_full = MCTS(model=model, mode="full")
+
+# Custom configuration (overrides mode defaults)
+mcts_custom = MCTS(model=model, mode="fast", n_simulations=50, max_depth=3)
+```
+
+| Mode | Simulations | Max Depth | Timeout | Use Case |
+|------|-------------|-----------|---------|----------|
+| fast | 30 | 2 | 3s | Real-time play, web UI |
+| full | 150 | 4 | 15s | Offline analysis, strong play |
 
 ### Training
 
@@ -117,6 +165,17 @@ Modify YAML files in `configs/` directory:
 - `model.yaml`: Network architecture and input/output dimensions
 - `training.yaml`: Training hyperparameters
 - `mcts.yaml`: MCTS search parameters
+
+## Model Files
+
+The pre-trained model file `dual_network_final.pt` should be placed in the project root directory.
+
+The model architecture consists of:
+- **SharedFeatureExtractor**: Processes 3x81 dimensional state vectors (3 consecutive game states)
+- **PolicyHead**: Outputs 5-dimensional action vector (velocity, angles, offsets)
+- **ValueHead**: Outputs win probability estimate
+
+Model file format: PyTorch state dict with `feature_extractor`, `policy_head`, and `value_head` components.
 
 ## Project Structure
 
