@@ -8,7 +8,7 @@ class PhysicsWrapper:
     
     def __init__(self):
         # Initialize physics engine
-        self.table = pt.Table.create(pt.TableType.SNOOKER)
+        self.table = pt.Table.prebuilt('Generic Snooker')
         self.balls = {}
     
     def simulate(self, state, action):

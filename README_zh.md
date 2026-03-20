@@ -90,6 +90,12 @@ conda activate poolenv
 conda create -n poolenv python=3.10
 conda activate poolenv
 
+# 安装 pooltool（台球物理引擎）
+# 从源码安装（推荐）：
+git clone https://github.com/bboland/pooltool.git
+cd pooltool && pip install -e .
+cd ..
+
 # 安装依赖
 pip install -r requirements.txt
 
@@ -123,6 +129,65 @@ Web UI 支持：
 - 可视化台球桌和球的位置
 - 执行击球并查看结果
 - 获取 AI 推荐的击球动作（AI 模式）
+
+### CLI 对战
+
+CueZero 提供命令行界面进行 Agent 对战。
+
+```bash
+# 快速开始：MCTS(Fast) vs Basic
+python scripts/cli_game.py --agent-a mcts_fast --agent-b basic --games 5
+
+# Human vs MCTS(Full)
+python scripts/cli_game.py --agent-a human --agent-b mcts_full --games 3
+
+# 查看完整参数
+python scripts/cli_game.py --help
+```
+
+**参数说明**：
+- `--agent-a`: Agent A 类型 (human, mcts_fast, mcts_full, policy, basic, random)
+- `--agent-b`: Agent B 类型
+- `--games`: 对战局数
+- `--model`: 模型文件路径
+- `--no-verbose`: 禁用详细输出
+- `--seed`: 随机种子
+
+### Agent 类型说明
+
+| 类型         | 描述                                   | 使用场景           |
+|--------------|----------------------------------------|--------------------|
+| human        | 人工操作，通过命令行输入               | 人机对战、测试     |
+| mcts_fast    | MCTS 快速模式 (30 次模拟，深度 2)        | 实时对战、快速测试 |
+| mcts_full    | MCTS 完整模式 (150 次模拟，深度 4)       | 强对弈、离线分析   |
+| policy       | 策略网络直接预测                       | 快速推理           |
+| basic        | 基于启发式规则                         | 基线对比           |
+| random       | 随机动作                               | 测试、调试         |
+
+### 服务端对战 API
+
+服务器支持通过 REST API 进行 Agent 对战。
+
+```bash
+# 启动服务器（指定默认 Agent）
+python server.py --agent-a mcts_fast --agent-b basic
+
+# 使用 API 开始对战
+curl -X POST http://localhost:8000/api/battle/start \
+  -H "Content-Type: application/json" \
+  -d '{"agent_a_type": "human", "agent_b_type": "mcts_fast", "total_games": 3}'
+
+# 执行下一步（自动获取 AI 决策）
+curl -X POST http://localhost:8000/api/battle/{battle_id}/next \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# 获取对战状态
+curl http://localhost:8000/api/battle/{battle_id}/status
+
+# 列出所有对战
+curl http://localhost:8000/api/battles
+```
 
 ### MCTS 模式
 
@@ -224,7 +289,12 @@ cuezero/
 ├── scripts/
 │   ├── train.py                 # 训练脚本
 │   ├── selfplay.py              # 自对弈数据生成
-│   └── evaluate.py              # 评估脚本
+│   ├── evaluate.py              # 评估脚本
+│   └── cli_game.py              # CLI 对战界面
+│
+├── server/
+│   ├── server.py                # Web 服务器（含对战 API）
+│   └── mock_env.py              # Mock 环境
 │
 └── experiments/
     └── baseline_eval.py         # 基线代理评估

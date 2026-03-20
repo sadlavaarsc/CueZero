@@ -12,26 +12,26 @@ class BilliardsEnv:
     def reset(self, target_ball='solid'):
         """Reset the environment to initial state"""
         # Initialize table
-        self.table = pt.Table.create(pt.TableType.SNOOKER)
-        
-        # Initialize balls
+        self.table = pt.Table.prebuilt('Generic Snooker')
+
+        # Initialize balls in snooker formation
         self.balls = {
-            'cue': pt.Ball.create('cue', pos=(0.5, 0.5)),
-            '1': pt.Ball.create('1', pos=(0.7, 0.5)),
-            '2': pt.Ball.create('2', pos=(0.7, 0.53)),
-            '3': pt.Ball.create('3', pos=(0.7, 0.47)),
-            '4': pt.Ball.create('4', pos=(0.73, 0.515)),
-            '5': pt.Ball.create('5', pos=(0.73, 0.485)),
-            '6': pt.Ball.create('6', pos=(0.76, 0.5)),
-            '7': pt.Ball.create('7', pos=(0.76, 0.53)),
-            '8': pt.Ball.create('8', pos=(0.76, 0.47)),
-            '9': pt.Ball.create('9', pos=(0.79, 0.515)),
-            '10': pt.Ball.create('10', pos=(0.79, 0.485)),
-            '11': pt.Ball.create('11', pos=(0.82, 0.5)),
-            '12': pt.Ball.create('12', pos=(0.82, 0.53)),
-            '13': pt.Ball.create('13', pos=(0.82, 0.47)),
-            '14': pt.Ball.create('14', pos=(0.85, 0.515)),
-            '15': pt.Ball.create('15', pos=(0.85, 0.485))
+            'cue': pt.Ball.create('cue', xy=(0.5, 0.5)),
+            '1': pt.Ball.create('1', xy=(0.7, 0.5)),
+            '2': pt.Ball.create('2', xy=(0.7, 0.53)),
+            '3': pt.Ball.create('3', xy=(0.7, 0.47)),
+            '4': pt.Ball.create('4', xy=(0.73, 0.515)),
+            '5': pt.Ball.create('5', xy=(0.73, 0.485)),
+            '6': pt.Ball.create('6', xy=(0.76, 0.5)),
+            '7': pt.Ball.create('7', xy=(0.76, 0.53)),
+            '8': pt.Ball.create('8', xy=(0.76, 0.47)),
+            '9': pt.Ball.create('9', xy=(0.79, 0.515)),
+            '10': pt.Ball.create('10', xy=(0.79, 0.485)),
+            '11': pt.Ball.create('11', xy=(0.82, 0.5)),
+            '12': pt.Ball.create('12', xy=(0.82, 0.53)),
+            '13': pt.Ball.create('13', xy=(0.82, 0.47)),
+            '14': pt.Ball.create('14', xy=(0.85, 0.515)),
+            '15': pt.Ball.create('15', xy=(0.85, 0.485))
         }
         
         # Set target ball type

@@ -80,7 +80,7 @@ The AI demonstrates advanced tactical awareness, including continuous shot capab
 
 ## Quick Start
 
-## Environment Setup
+### Environment Setup
 
 ```bash
 # Create conda environment (Python 3.10+ recommended)
@@ -90,6 +90,12 @@ conda activate poolenv
 # If you don't have the environment yet, create it:
 conda create -n poolenv python=3.10
 conda activate poolenv
+
+# Install pooltool (billiards physics engine)
+# Install from source (recommended):
+git clone https://github.com/bboland/pooltool.git
+cd pooltool && pip install -e .
+cd ..
 
 # Install dependencies
 pip install -r requirements.txt
@@ -126,6 +132,65 @@ The web UI supports:
 - Visualizing the billiard table and ball positions
 - Executing shots and seeing results
 - Getting AI-recommended shots (in AI mode)
+
+### CLI Battle
+
+CueZero provides a command-line interface for agent battles.
+
+```bash
+# Quick start: MCTS(Fast) vs Basic
+python scripts/cli_game.py --agent-a mcts_fast --agent-b basic --games 5
+
+# Human vs MCTS(Full)
+python scripts/cli_game.py --agent-a human --agent-b mcts_full --games 3
+
+# View all options
+python scripts/cli_game.py --help
+```
+
+**Arguments**:
+- `--agent-a`: Agent A type (human, mcts_fast, mcts_full, policy, basic, random)
+- `--agent-b`: Agent B type
+- `--games`: Number of games to play
+- `--model`: Path to model file
+- `--no-verbose`: Disable verbose output
+- `--seed`: Random seed
+
+### Agent Types
+
+| Type       | Description                                   | Use Case                  |
+|------------|-----------------------------------------------|---------------------------|
+| human      | Human player via command line input           | Human vs AI, testing      |
+| mcts_fast  | MCTS fast mode (30 simulations, depth 2)      | Real-time play, quick test|
+| mcts_full  | MCTS full mode (150 simulations, depth 4)     | Strong play, offline analysis |
+| policy     | Policy network direct prediction              | Fast inference            |
+| basic      | Heuristic rule-based                          | Baseline comparison       |
+| random     | Random actions                                | Testing, debugging        |
+
+### Server Battle API
+
+The server supports agent battles via REST API.
+
+```bash
+# Start server with default agents
+python server.py --agent-a mcts_fast --agent-b basic
+
+# Start a battle via API
+curl -X POST http://localhost:8000/api/battle/start \
+  -H "Content-Type: application/json" \
+  -d '{"agent_a_type": "human", "agent_b_type": "mcts_fast", "total_games": 3}'
+
+# Execute next step (auto AI decision)
+curl -X POST http://localhost:8000/api/battle/{battle_id}/next \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Get battle status
+curl http://localhost:8000/api/battle/{battle_id}/status
+
+# List all battles
+curl http://localhost:8000/api/battles
+```
 
 ### MCTS Modes
 
@@ -227,7 +292,12 @@ cuezero/
 ├── scripts/
 │   ├── train.py                 # Training script
 │   ├── selfplay.py              # Self-play data generation
-│   └── evaluate.py              # Evaluation script
+│   ├── evaluate.py              # Evaluation script
+│   └── cli_game.py              # CLI battle interface
+│
+├── server/
+│   ├── server.py                # Web server (with battle API)
+│   └── mock_env.py              # Mock environment
 │
 └── experiments/
     └── baseline_eval.py         # Baseline agent evaluation
