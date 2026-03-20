@@ -1,0 +1,24 @@
+# Training configuration
+
+# General training settings
+training:
+  batch_size: 64
+  epochs: 100
+  learning_rate: 0.001
+  validation_split: 0.1
+  save_interval: 10
+
+# Model settings
+model:
+  policy_layers: [256, 128, 64]
+  value_layers: [256, 128, 1]
+  activation: "relu"
+  dropout: 0.3
+  policy_output_dim: 5  # V0, phi, theta, a, b
+  value_output_dim: 1
+
+# Data settings
+data:
+  buffer_size: 10000
+  sample_size: 5000
+  shuffle_buffer: 1000
