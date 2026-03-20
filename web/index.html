@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CueZero - AlphaZero 台球 AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            font-weight: 300;
+            letter-spacing: 6px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+
+        /* 台球桌容器 - 保持 2:1 比例 */
+        .game-container {
+            position: relative;
+            /* 保持 2:1 宽高比 */
+            aspect-ratio: 2 / 1;
+            /* 最大占用屏幕的 75%，避免过满 */
+            max-width: min(75vw, 1200px);
+            max-height: min(75vh, 600px);
+            /* 根据屏幕方向调整 */
+            width: min(75vw, 1200px);
+            height: min(37.5vw, 600px);
+        }
+
+        /* 竖屏模式：高度优先 */
+        @media (max-aspect-ratio: 2/1) {
+            .game-container {
+                height: min(60vh, 400px);
+                width: min(120vh, 800px);
+            }
+        }
+
+        #table {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+            border-radius: 4px;
+        }
+
+        .info-panel {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            padding: 15px 25px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-value {
+            font-size: 22px;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+
+        .score-display {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .team-score {
+            padding: 8px 18px;
+            border-radius: 4px;
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .team-score.red {
+            background: rgba(231, 76, 60, 0.15);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+
+        .team-score.yellow {
+            background: rgba(241, 196, 15, 0.15);
+            border: 1px solid rgba(241, 196, 15, 0.3);
+        }
+
+        .team-score .label {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .team-score .value {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .team-score.red .value { color: #e74c3c; }
+        .team-score.yellow .value { color: #f1c40f; }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #2a2a4a;
+            color: #fff;
+        }
+
+        button:hover {
+            background: #3a3a5a;
+        }
+
+        button.primary {
+            background: #4fc3f7;
+            color: #1a1a2e;
+        }
+
+        button.primary:hover {
+            background: #6dd4f9;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+            min-height: 20px;
+        }
+
+        .animating-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            letter-spacing: 2px;
+            z-index: 10;
+            border-radius: 4px;
+        }
+
+        .pocketed-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #4fc3f7;
+            z-index: 5;
+        }
+
+        /* 手机端优化 */
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 22px;
+                letter-spacing: 3px;
+            }
+
+            .game-container {
+                max-width: 95vw;
+                max-height: 50vh;
+                width: 95vw;
+                height: 47.5vw;
+            }
+
+            .info-panel {
+                gap: 20px;
+                padding: 12px 18px;
+            }
+
+            .info-value {
+                font-size: 18px;
+            }
+
+            .score-display {
+                gap: 12px;
+            }
+
+            .team-score {
+                min-width: 65px;
+                padding: 6px 12px;
+            }
+
+            .controls {
+                gap: 8px;
+            }
+
+            button {
+                padding: 8px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>CUEZERO</h1>
+    <div class="subtitle">AlphaZero Billiards AI</div>
+
+    <div class="game-container">
+        <canvas id="table"></canvas>
+        <div id="overlay" class="animating-overlay" style="display: none;">
+            击球中...
+        </div>
+        <div id="pocketed" class="pocketed-indicator" style="display: none;"></div>
+    </div>
+
+    <div class="score-display">
+        <div class="team-score red">
+            <div class="label">红方</div>
+            <div class="value" id="red-score">0</div>
+        </div>
+        <div class="team-score yellow">
+            <div class="label">黄方</div>
+            <div class="value" id="yellow-score">0</div>
+        </div>
+    </div>
+
+    <div class="info-panel">
+        <div class="info-item">
+            <div class="info-label">回合</div>
+            <div class="info-value" id="turn">1</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">剩余球</div>
+            <div class="info-value" id="remaining">15</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="primary" onclick="resetGame()">重新开始</button>
+        <button onclick="fetchState()">刷新状态</button>
+    </div>
+
+    <div class="status" id="status">点击白球进入瞄准模式</div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
