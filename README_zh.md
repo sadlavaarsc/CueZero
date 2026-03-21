@@ -125,11 +125,11 @@ CueZero 包含一个基于 Web 的 UI，用于可视化和与 AI 交互。
 
 ```bash
 # 启动 Web 服务器（mock 模式 - 默认）
-cd server
-python server.py
+# 在项目根目录执行，无需 cd 到 server 目录
+PYTHONPATH=. python -m server.server
 
 # 使用 AI 模式（需要 dual_network_final.pt 模型文件）
-python server.py --ai
+PYTHONPATH=. python -m server.server --ai
 
 # 访问 http://localhost:8000
 ```

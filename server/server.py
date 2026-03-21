@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # 导入 mock 环境
-from mock_env import get_initial_state, simulate_shot
+from server.mock_env import get_initial_state, simulate_shot
 
 # 导入 AI 模块
 from cuezero.models.dual_network import DualNetwork
@@ -834,8 +834,9 @@ def main():
         get_ai_components()
 
     import uvicorn
+    # 直接传入 app 对象，避免模块路径问题
     uvicorn.run(
-        "server:app",
+        app,
         host=args.host,
         port=args.port,
         reload=args.reload

@@ -128,11 +128,11 @@ CueZero includes a web-based UI for visualizing and interacting with the AI.
 
 ```bash
 # Start the web server (mock mode - default)
-cd server
-python server.py
+# Run from project root, no need to cd into server directory
+PYTHONPATH=. python -m server.server
 
 # Start with AI mode (requires dual_network_final.pt model file)
-python server.py --ai
+PYTHONPATH=. python -m server.server --ai
 
 # Access the UI at http://localhost:8000
 ```

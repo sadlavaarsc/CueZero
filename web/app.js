@@ -63,11 +63,13 @@ function distance(p1, p2) {
 function toCanvas(pos) {
     if (!gameState) return [0, 0];
     const table = gameState.table;
+    // 后端坐标已经是横向布局：x ∈ [-7,7], y ∈ [-3.5,3.5]
     const tableWidth = table.right - table.left;
     const tableHeight = table.top - table.bottom;
     const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
     const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
     const scale = Math.min(scaleX, scaleY);
+    // 直接映射，y轴翻转使视觉符合习惯（y向下增加）
     const x = CONFIG.TABLE_PADDING + (pos[0] - table.left) * scale;
     const y = canvas.height - CONFIG.TABLE_PADDING - (pos[1] - table.bottom) * scale;
     return [x, y];
@@ -82,6 +84,7 @@ function toGame(x, y) {
     const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
     const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
     const scale = Math.min(scaleX, scaleY);
+    // 逆向转换，y轴翻转
     const gameX = table.left + (x - CONFIG.TABLE_PADDING) / scale;
     const gameY = table.bottom + (canvas.height - CONFIG.TABLE_PADDING - y) / scale;
     return [gameX, gameY];
@@ -104,6 +107,7 @@ function render() {
 
 function drawTable() {
     const table = gameState.table;
+    // 桌子的左上角 (left, top) 和右下角 (right, bottom)
     const [leftX, topY] = toCanvas([table.left, table.top]);
     const [rightX, bottomY] = toCanvas([table.right, table.bottom]);
     const width = rightX - leftX;
@@ -120,12 +124,13 @@ function drawTable() {
 }
 
 function drawPockets() {
+    // 6个球袋位置：左上、中上、右上、左下、中下、右下
     const pockets = [
         [gameState.table.left, gameState.table.top],
-        [gameState.table.right, gameState.table.top],
         [0, gameState.table.top],
-        [0, gameState.table.bottom],
+        [gameState.table.right, gameState.table.top],
         [gameState.table.left, gameState.table.bottom],
+        [0, gameState.table.bottom],
         [gameState.table.right, gameState.table.bottom]
     ];
 
@@ -439,10 +444,21 @@ async function executeBattleShot(action) {
                 hasFoul = true;
             }
 
-            // 显示结果信息
+            // 显示结果信息 - 显示当前大比分（总局胜负）
             let hasScoring = stepInfo.ME_INTO_POCKET?.length > 0 || stepInfo.ENEMY_INTO_POCKET?.length > 0;
-            if (hasScoring) {
-                appendMatchLog(`  得分：红方 ${gameState.red_score} - ${gameState.yellow_score} 黄方`, 'info');
+            if (hasScoring && isBattleMode && currentBattleId) {
+                // 异步获取最新对战状态并显示大比分
+                (async () => {
+                    try {
+                        const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
+                        const status = await statusRes.json();
+                        const results = status.state.results;
+                        appendMatchLog(`  大比分：红方 <span style="color:#e74c3c;">${results.A}</span> - <span style="color:#f1c40f;">${results.B}</span> 黄方`, 'info');
+                    } catch(e) {
+                        // 失败时fallback到原方式
+                        appendMatchLog(`  得分：红方 ${gameState.red_score} - ${gameState.yellow_score} 黄方`, 'info');
+                    }
+                })();
             }
 
             // 检查是否达到最大回合数 - 只显示一次
@@ -535,7 +551,12 @@ function appendMatchLog(text, type = 'normal') {
     const logEl = document.getElementById('match-log');
     const entry = document.createElement('div');
     entry.className = `log-entry ${type}`;
-    entry.textContent = text;
+    // 检查是否包含HTML标签，如果有则使用innerHTML
+    if (text.includes('<')) {
+        entry.innerHTML = text;
+    } else {
+        entry.textContent = text;
+    }
     logEl.appendChild(entry);
     // 自动滚动到底部
     logEl.scrollTop = logEl.scrollHeight;
@@ -645,8 +666,9 @@ async function updateUI() {
             currentPlayerEl.textContent = status.state.current_player;
             currentPlayerEl.style.color = status.state.current_player === 'A' ? '#e74c3c' : '#f1c40f';
 
-            // 更新大比分
-            document.querySelector('#game-score .info-value').textContent = `${results.A} - ${results.B}`;
+            // 更新大比分 - 添加颜色：A红方红色，B黄方黄色
+            const scoreEl = document.querySelector('#game-score .info-value');
+            scoreEl.innerHTML = `<span style="color:#e74c3c;">${results.A}</span> - <span style="color:#f1c40f;">${results.B}</span>`;
         } catch (e) { /* 忽略错误 */ }
     }
 }
