@@ -166,17 +166,29 @@ function drawBalls() {
         ctx.fillStyle = color;
         ctx.fill();
 
-        // 黑八绘制白色数字区域
-        if (id === '8') {
-            ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
-            ctx.fill();
-            ctx.fillStyle = '#000';
-            ctx.font = 'bold 8px sans-serif';
+        // 绘制数字编号（母球除外）
+        if (id !== 'cue') {
+            let textColor;
+            let textSize = id.length > 1 ? 7 : 8;
+            if (id === '8') {
+                // 黑八保持原有样式：白圈黑字
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                textColor = '#000';
+            } else if (['1', '2', '3', '4', '5', '6', '7'].includes(id)) {
+                // 红色球用白色文字
+                textColor = '#fff';
+            } else {
+                // 黄色球用黑色文字
+                textColor = '#000';
+            }
+            ctx.fillStyle = textColor;
+            ctx.font = `bold ${textSize}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('8', x, y);
+            ctx.fillText(id, x, y);
         }
     });
 }
@@ -344,7 +356,8 @@ async function startBattle() {
             document.querySelector('.controls button:first-child').textContent = '退出对战';
 
             appendMatchLog(`=== 对战开始 ===`, 'info');
-            appendMatchLog(`Agent A: ${result.agent_a} vs Agent B: ${result.agent_b}`);
+            appendMatchLog(`Agent A (红方): ${result.agent_a}`, 'red');
+            appendMatchLog(`Agent B (黄方): ${result.agent_b}`, 'yellow');
             appendMatchLog(`总局数：${totalGames}局`);
             appendMatchLog(`------- 第 1 局比赛开始 -------`, 'success');
             appendMatchLog(`本局目标球型: 实心球(1-7)`);
@@ -378,10 +391,11 @@ async function executeBattleShot(action) {
 
             // 记录击球信息到赛程
             const playerName = result.current_player === 'A' ? battleConfig.agentA : battleConfig.agentB;
+            const logType = result.current_player === 'A' ? 'red' : 'yellow';
             const shotNum = gameState.turn;
             const stepInfo = result.step_info || {};
 
-            appendMatchLog(`[第${shotNum}次击球] ${playerName} 回合`);
+            appendMatchLog(`[第${shotNum}次击球] ${playerName} 回合`, logType);
 
             // 显示击球参数
             if (result.action) {
@@ -599,8 +613,22 @@ async function resetGame() {
 async function updateUI() {
     if (!gameState) return;
     document.getElementById('turn').textContent = gameState.turn;
-    document.getElementById('red-score').textContent = gameState.red_score || 0;
-    document.getElementById('yellow-score').textContent = gameState.yellow_score || 0;
+
+    // 统计红方剩余（1-7 + 黑8，如果还在桌上）
+    const redRemaining = Object.values(gameState.balls).filter(
+        ball => !ball.pocketed && ball.team === 'red'
+    ).length +
+    (Object.values(gameState.balls).find(b => b.id === '8' && !b.pocketed) ? 1 : 0);
+
+    // 统计黄方剩余（9-15 + 黑8，如果还在桌上）
+    const yellowRemaining = Object.values(gameState.balls).filter(
+        ball => !ball.pocketed && ball.team === 'yellow'
+    ).length +
+    (Object.values(gameState.balls).find(b => b.id === '8' && !b.pocketed) ? 1 : 0);
+
+    document.getElementById('red-score').textContent = redRemaining;
+    document.getElementById('yellow-score').textContent = yellowRemaining;
+
     // 只计数未进袋的球，排除白球
     const remainingCount = Object.values(gameState.balls).filter(ball => !ball.pocketed && ball.id !== 'cue').length;
     document.getElementById('remaining').textContent = remainingCount;
@@ -615,7 +643,7 @@ async function updateUI() {
             // 更新当前玩家
             const currentPlayerEl = document.querySelector('#current-player .info-value');
             currentPlayerEl.textContent = status.state.current_player;
-            currentPlayerEl.style.color = status.state.current_player === 'A' ? '#4fc3f7' : '#f1c40f';
+            currentPlayerEl.style.color = status.state.current_player === 'A' ? '#e74c3c' : '#f1c40f';
 
             // 更新大比分
             document.querySelector('#game-score .info-value').textContent = `${results.A} - ${results.B}`;
@@ -718,8 +746,9 @@ function handlePointerUp(e) {
 
 // ==================== 初始化 ====================
 function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    // 设置 Canvas 实际分辨率等于 CSS 显示尺寸
+    const container = document.querySelector('.game-container');
+    const rect = container.getBoundingClientRect();
+    // 设置 Canvas 实际分辨率等于容器 CSS 显示尺寸，确保和蒙板对齐
     canvas.width = Math.floor(rect.width);
     canvas.height = Math.floor(rect.height);
 }
