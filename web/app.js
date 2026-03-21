@@ -4,7 +4,7 @@
 
 // ==================== 配置 ====================
 const CONFIG = {
-    API_BASE: 'http://localhost:8000/api',
+    API_BASE: window.location.origin + '/api',
     TABLE_PADDING: 30,
     BALL_RADIUS: 10,
     CUE_MAX_LENGTH: 120,
@@ -32,6 +32,12 @@ let isDragging = false;
 let aimStart = null;
 let aimCurrent = null;
 let power = 0;
+
+// 对战模式状态
+let currentBattleId = null;
+let battleConfig = null;
+let isBattleMode = false;
+let matchHistory = [];
 
 const canvas = document.getElementById('table');
 const ctx = canvas.getContext('2d');
@@ -288,8 +294,15 @@ function interpolateState(start, end, t) {
 // ==================== API ====================
 async function fetchState() {
     try {
-        const response = await fetch(`${CONFIG.API_BASE}/state`);
-        gameState = await response.json();
+        if (isBattleMode && currentBattleId) {
+            // 对战模式下获取对战球状态
+            const response = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/ball_state`);
+            gameState = await response.json();
+        } else {
+            // 普通模式下获取mock状态
+            const response = await fetch(`${CONFIG.API_BASE}/state`);
+            gameState = await response.json();
+        }
         updateUI();
         render();
         updateStatus('状态已更新');
@@ -298,32 +311,187 @@ async function fetchState() {
     }
 }
 
-async function executeShot(phi, v0) {
-    if (isAnimating) return;
-
+// 开始对战
+async function startBattle() {
     try {
-        const response = await fetch(`${CONFIG.API_BASE}/shot`, {
+        const agentA = document.getElementById('agent-a').value;
+        const agentB = document.getElementById('agent-b').value;
+        const totalGames = parseInt(document.getElementById('total-games').value);
+
+        updateStatus('正在创建对战...');
+
+        const response = await fetch(`${CONFIG.API_BASE}/battle/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: { phi, V0: v0 }, state: gameState })
+            body: JSON.stringify({
+                agent_a_type: agentA,
+                agent_b_type: agentB,
+                total_games: totalGames
+            })
         });
 
         const result = await response.json();
-        if (result.success) {
+        if (response.ok) {
+            currentBattleId = result.battle_id;
+            isBattleMode = true;
+            battleConfig = { agentA, agentB, totalGames };
+            matchHistory = [];
+
+            // 更新UI
+            document.getElementById('battle-config').style.display = 'none';
+            document.getElementById('current-player').style.display = 'block';
+            document.getElementById('game-score').style.display = 'block';
+            document.querySelector('.controls button:first-child').textContent = '退出对战';
+
+            appendMatchLog(`=== 对战开始 ===`, 'info');
+            appendMatchLog(`Agent A: ${result.agent_a} vs Agent B: ${result.agent_b}`);
+            appendMatchLog(`总局数：${totalGames}局`);
+            appendMatchLog(`第 1 局比赛开始`, 'success');
+
+            await fetchState();
+
+            // 检查当前玩家是否是AI，如果是自动击球
+            await checkAIAction();
+        } else {
+            updateStatus('创建对战失败：' + result.detail);
+        }
+    } catch (error) {
+        updateStatus('创建对战失败：' + error.message);
+    }
+}
+
+// 执行对战击球
+async function executeBattleShot(action) {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/next`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action })
+        });
+
+        const result = await response.json();
+        if (result.start_state && result.end_state) {
+            // 播放击球动画
             await playAnimation(result.start_state, result.end_state);
             gameState = result.end_state;
-            updateUI();
-            if (result.message !== '击球完成') {
-                showPocketed(result.message);
+
+            // 记录击球信息到赛程
+            const playerName = result.current_player === 'A' ? battleConfig.agentA : battleConfig.agentB;
+            const shotNum = gameState.turn;
+            appendMatchLog(`[第${shotNum}次击球] ${playerName} 回合`);
+            if (result.message.includes('进球')) {
+                appendMatchLog(`  ${result.message}`, 'success');
             }
-            updateStatus('击球完成');
+
+            // 检查是否局结束
+            if (result.game_status === 'finished' && result.winner) {
+                const winner = result.winner === 'A' ? battleConfig.agentA : battleConfig.agentB;
+                appendMatchLog(`第 ${gameState.turn} 局结束，${winner} 获胜！`, 'success');
+
+                // 获取最新状态更新比分
+                const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
+                const status = await statusRes.json();
+                const results = status.state.results;
+                appendMatchLog(`当前比分：A ${results.A} - ${results.B} B`, 'info');
+            }
+
+            updateUI();
+            updateStatus(result.message);
+
+            // 检查是否需要继续AI动作
+            setTimeout(() => checkAIAction(), 500);
         }
     } catch (error) {
         updateStatus('击球失败：' + error.message);
     }
 }
 
+// 检查当前玩家是否是AI，自动执行动作
+async function checkAIAction() {
+    if (!isBattleMode || !currentBattleId || isAnimating) return;
+
+    try {
+        const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
+        const status = await statusRes.json();
+        const currentPlayer = status.state.current_player;
+        const agentType = currentPlayer === 'A' ? battleConfig.agentA : battleConfig.agentB;
+
+        // 如果是AI类型，自动执行击球
+        if (agentType !== 'human') {
+            updateStatus(`${agentType} 正在思考...`);
+            await executeBattleShot(null); // 不传action，由AI决策
+        }
+    } catch (error) {
+        updateStatus('AI动作执行失败：' + error.message);
+    }
+}
+
+// 追加赛程日志
+function appendMatchLog(text, type = 'normal') {
+    const logEl = document.getElementById('match-log');
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    entry.textContent = text;
+    logEl.appendChild(entry);
+    // 自动滚动到底部
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function executeShot(phi, v0) {
+    if (isAnimating) return;
+
+    if (isBattleMode && currentBattleId) {
+        // 对战模式下调用对战击球接口
+        await executeBattleShot({ phi, V0: v0 });
+    } else {
+        // 普通模式下调用原接口
+        try {
+            const response = await fetch(`${CONFIG.API_BASE}/shot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: { phi, V0: v0 }, state: gameState })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                await playAnimation(result.start_state, result.end_state);
+                gameState = result.end_state;
+                updateUI();
+                if (result.message !== '击球完成') {
+                    showPocketed(result.message);
+                }
+                updateStatus('击球完成');
+            }
+        } catch (error) {
+            updateStatus('击球失败：' + error.message);
+        }
+    }
+}
+
 async function resetGame() {
+    if (isBattleMode && currentBattleId) {
+        // 对战模式下退出对战
+        try {
+            await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}`, { method: 'DELETE' });
+        } catch (e) { /* 忽略删除错误 */ }
+
+        // 重置对战状态
+        isBattleMode = false;
+        currentBattleId = null;
+        battleConfig = null;
+
+        // 更新UI
+        document.getElementById('battle-config').style.display = 'flex';
+        document.getElementById('current-player').style.display = 'none';
+        document.getElementById('game-score').style.display = 'none';
+        document.querySelector('.controls button:first-child').textContent = '重新开始';
+
+        appendMatchLog('=== 已退出对战 ===', 'warning');
+        appendMatchLog('选择对战双方和局数，点击"开始对战"开始比赛');
+        appendMatchLog('或直接点击白球进行自由练习');
+    }
+
+    // 重置游戏状态
     try {
         const response = await fetch(`${CONFIG.API_BASE}/reset`, { method: 'POST' });
         const result = await response.json();
@@ -338,12 +506,29 @@ async function resetGame() {
     }
 }
 
-function updateUI() {
+async function updateUI() {
     if (!gameState) return;
     document.getElementById('turn').textContent = gameState.turn;
     document.getElementById('red-score').textContent = gameState.red_score || 0;
     document.getElementById('yellow-score').textContent = gameState.yellow_score || 0;
     document.getElementById('remaining').textContent = Object.keys(gameState.balls).length - 1;
+
+    // 如果是对战模式，更新对战相关信息
+    if (isBattleMode && currentBattleId) {
+        try {
+            const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
+            const status = await statusRes.json();
+            const results = status.state.results;
+
+            // 更新当前玩家
+            const currentPlayerEl = document.querySelector('#current-player .info-value');
+            currentPlayerEl.textContent = status.state.current_player;
+            currentPlayerEl.style.color = status.state.current_player === 'A' ? '#4fc3f7' : '#f1c40f';
+
+            // 更新大比分
+            document.querySelector('#game-score .info-value').textContent = `${results.A} - ${results.B}`;
+        } catch (e) { /* 忽略错误 */ }
+    }
 }
 
 function updateStatus(message) {

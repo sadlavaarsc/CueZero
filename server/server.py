@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # 导入 mock 环境
-from .mock_env import get_initial_state, simulate_shot
+from mock_env import get_initial_state, simulate_shot
 
 # 导入 AI 模块
 from cuezero.models.dual_network import DualNetwork
@@ -82,6 +82,8 @@ class BattleState:
         self.game_status = "waiting"  # waiting, playing, finished
         self.winner = None
         self.last_action = None
+        self.last_shot_info = None  # 记录最后一次击球的详细信息
+        self.shot_history = []  # 历史击球记录
         self.created_at = time.time()
 
     def start_game(self, target_ball: str = 'solid'):
@@ -103,8 +105,23 @@ class BattleState:
 
     def execute_action(self, action: dict) -> dict:
         """Execute an action and return step info"""
+        # 记录击球前的状态
+        start_state = self.get_ball_state()
+
         step_info = self.env.take_shot(action)
         self.last_action = action
+
+        # 记录击球后的状态和信息
+        end_state = self.get_ball_state()
+        self.last_shot_info = {
+            'player': self.current_player,
+            'action': action,
+            'step_info': step_info,
+            'start_state': start_state,
+            'end_state': end_state,
+            'timestamp': time.time()
+        }
+        self.shot_history.append(self.last_shot_info)
 
         # Check if game is done
         done, info = self.env.get_done()
@@ -113,6 +130,13 @@ class BattleState:
             winner = info.get('winner', 'DRAW')
             self.results[winner] += 1
             self.winner = winner
+            # 记录本局结果到历史
+            self.shot_history.append({
+                'type': 'game_end',
+                'winner': winner,
+                'results': self.results.copy(),
+                'timestamp': time.time()
+            })
         else:
             # Switch player if no ball pocketed
             if not step_info.get('LEGAL_INTO_POCKET'):
@@ -135,6 +159,31 @@ class BattleState:
             'game_status': self.game_status,
             'winner': self.winner,
             'last_action': self.last_action,
+            'last_shot_info': self.last_shot_info,
+            'shot_history': self.shot_history
+        }
+
+    def get_ball_state(self) -> dict:
+        """Get simplified ball state compatible with frontend render"""
+        balls = {}
+        for ball in self.env.balls.values():
+            balls[ball.number if hasattr(ball, 'number') else str(ball.id)] = {
+                'pos': [ball.x, ball.y],
+                'pocketed': ball.pocketed
+            }
+
+        return {
+            'balls': balls,
+            'table': {
+                'left': self.env.table.left,
+                'right': self.env.table.right,
+                'top': self.env.table.top,
+                'bottom': self.env.table.bottom
+            },
+            'turn': len(self.shot_history) + 1,
+            'player': self.current_player,
+            'red_score': len([b for b in self.env.pocketed_balls if int(b.number) < 8]) if hasattr(self.env, 'pocketed_balls') else 0,
+            'yellow_score': len([b for b in self.env.pocketed_balls if int(b.number) > 8]) if hasattr(self.env, 'pocketed_balls') else 0
         }
 
 
@@ -246,6 +295,8 @@ class BattleNextResponse(BaseModel):
     current_player: str
     winner: str | None
     message: str
+    start_state: dict | None = None  # 击球前状态，用于前端动画
+    end_state: dict | None = None  # 击球后状态，用于前端渲染
 
 
 class BattleStatusResponse(BaseModel):
@@ -400,12 +451,24 @@ async def battle_next(battle_id: str, request: BattleNextRequest) -> BattleNextR
     step_info = battle.execute_action(action)
 
     # Build response message
+    start_state = battle.last_shot_info['start_state'] if battle.last_shot_info else None
+    end_state = battle.last_shot_info['end_state'] if battle.last_shot_info else None
+
     if battle.game_status == "finished":
         if battle.winner == 'DRAW':
             msg = "Game ended in a draw"
         else:
             winner_name = battle.agent_a.name if battle.winner == 'A' else battle.agent_b.name
             msg = f"{winner_name} wins!"
+
+        # 如果还有下一局，自动开始下一局
+        if battle.current_game < battle.total_games:
+            battle.current_game += 1
+            # 轮换目标球型：solid, solid, stripe, stripe
+            target_index = (battle.current_game - 1) % 4
+            target_ball = 'solid' if target_index < 2 else 'stripe'
+            battle.start_game(target_ball=target_ball)
+            msg += f" 第{battle.current_game}局即将开始"
     else:
         msg = f"Action executed by {agent.name}, next player: {battle.current_player}"
 
@@ -415,7 +478,9 @@ async def battle_next(battle_id: str, request: BattleNextRequest) -> BattleNextR
         game_status=battle.game_status,
         current_player=battle.current_player,
         winner=battle.winner,
-        message=msg
+        message=msg,
+        start_state=start_state,
+        end_state=end_state
     )
 
 
@@ -430,6 +495,16 @@ async def get_battle_status(battle_id: str) -> BattleStatusResponse:
         battle_id=battle_id,
         state=battle.get_state()
     )
+
+
+@app.get("/api/battle/{battle_id}/ball_state")
+async def get_battle_ball_state(battle_id: str) -> dict:
+    """Get simplified ball state for frontend rendering"""
+    if battle_id not in _battles:
+        raise HTTPException(status_code=404, detail="Battle not found")
+
+    battle = _battles[battle_id]
+    return battle.get_ball_state()
 
 
 @app.get("/api/battles")
