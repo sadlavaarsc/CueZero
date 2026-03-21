@@ -123,8 +123,8 @@ function drawPockets() {
     const pockets = [
         [gameState.table.left, gameState.table.top],
         [gameState.table.right, gameState.table.top],
-        [gameState.table.left, 0],
-        [gameState.table.right, 0],
+        [0, gameState.table.top],
+        [0, gameState.table.bottom],
         [gameState.table.left, gameState.table.bottom],
         [gameState.table.right, gameState.table.bottom]
     ];
@@ -346,7 +346,8 @@ async function startBattle() {
             appendMatchLog(`=== 对战开始 ===`, 'info');
             appendMatchLog(`Agent A: ${result.agent_a} vs Agent B: ${result.agent_b}`);
             appendMatchLog(`总局数：${totalGames}局`);
-            appendMatchLog(`第 1 局比赛开始`, 'success');
+            appendMatchLog(`------- 第 1 局比赛开始 -------`, 'success');
+            appendMatchLog(`本局目标球型: 实心球(1-7)`);
 
             await fetchState();
 
@@ -378,28 +379,110 @@ async function executeBattleShot(action) {
             // 记录击球信息到赛程
             const playerName = result.current_player === 'A' ? battleConfig.agentA : battleConfig.agentB;
             const shotNum = gameState.turn;
+            const stepInfo = result.step_info || {};
+
             appendMatchLog(`[第${shotNum}次击球] ${playerName} 回合`);
-            if (result.message.includes('进球')) {
-                appendMatchLog(`  ${result.message}`, 'success');
+
+            // 显示击球参数
+            if (result.action) {
+                const action = result.action;
+                appendMatchLog(`  击球：力度 ${action.V0?.toFixed(1) || '?'} m/s, 角度 ${action.phi?.toFixed(1) || '?'}°`, 'info');
+            }
+
+            // 显示进球信息
+            let hasEvent = false;
+            let hasFoul = false;
+            if (stepInfo.ME_INTO_POCKET?.length > 0) {
+                appendMatchLog(`  ✅ 打进己方球: ${stepInfo.ME_INTO_POCKET.join(', ')}`, 'success');
+                hasEvent = true;
+            }
+            if (stepInfo.ENEMY_INTO_POCKET?.length > 0) {
+                appendMatchLog(`  ⚠️  打进对方球: ${stepInfo.ENEMY_INTO_POCKET.join(', ')}`, 'warning');
+                hasEvent = true;
+            }
+            if (stepInfo.WHITE_BALL_INTO_POCKET) {
+                appendMatchLog(`  ❌ 白球进袋！犯规，恢复上一杆状态，交换球权`, 'error');
+                hasEvent = true;
+                hasFoul = true;
+            }
+            if (stepInfo.BLACK_BALL_INTO_POCKET) {
+                appendMatchLog(`  🎱 黑8进袋！`, stepInfo.winner ? 'success' : 'error');
+                hasEvent = true;
+            }
+            if (stepInfo.FOUL_FIRST_HIT) {
+                appendMatchLog(`  ❌ 犯规：首次碰撞对方球或黑8，恢复上一杆状态，交换球权`, 'error');
+                hasEvent = true;
+                hasFoul = true;
+            }
+            if (stepInfo.NO_HIT) {
+                appendMatchLog(`  ❌ 犯规：白球未击中任何球，恢复上一杆状态，交换球权`, 'error');
+                hasEvent = true;
+                hasFoul = true;
+            }
+            if (stepInfo.NO_POCKET_NO_RAIL) {
+                appendMatchLog(`  ❌ 犯规：无进球且无球碰库，恢复上一杆状态，交换球权`, 'error');
+                hasEvent = true;
+                hasFoul = true;
+            }
+
+            // 显示结果信息
+            let hasScoring = stepInfo.ME_INTO_POCKET?.length > 0 || stepInfo.ENEMY_INTO_POCKET?.length > 0;
+            if (hasScoring) {
+                appendMatchLog(`  得分：红方 ${gameState.red_score} - ${gameState.yellow_score} 黄方`, 'info');
+            }
+
+            // 检查是否达到最大回合数 - 只显示一次
+            let gameOver = false;
+            if (shotNum >= 60 && result.game_status !== 'finished') {
+                appendMatchLog(`⏰ 达到最大回合数60，比赛结束！`, 'warning');
+                // 计算剩余球数
+                let redRemaining = Object.values(gameState.balls).filter(b => b.team === 'red' && !b.pocketed).length;
+                let yellowRemaining = Object.values(gameState.balls).filter(b => b.team === 'yellow' && !b.pocketed).length;
+                appendMatchLog(`  剩余球数：红方 ${redRemaining}，黄方 ${yellowRemaining}`, 'info');
+                if (redRemaining < yellowRemaining) {
+                    appendMatchLog(`  红方获胜！`, 'success');
+                } else if (yellowRemaining < redRemaining) {
+                    appendMatchLog(`  黄方获胜！`, 'success');
+                } else {
+                    appendMatchLog(`  双方平局！`, 'info');
+                }
+                gameOver = true;
             }
 
             // 检查是否局结束
             if (result.game_status === 'finished' && result.winner) {
                 const winner = result.winner === 'A' ? battleConfig.agentA : battleConfig.agentB;
-                appendMatchLog(`第 ${gameState.turn} 局结束，${winner} 获胜！`, 'success');
+                appendMatchLog(`🏆 第 ${shotNum} 局结束，${winner} 获胜！`, 'success');
 
                 // 获取最新状态更新比分
                 const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
                 const status = await statusRes.json();
                 const results = status.state.results;
-                appendMatchLog(`当前比分：A ${results.A} - ${results.B} B`, 'info');
+                appendMatchLog(`📊 当前大比分：A ${results.A} - ${results.B} B`, 'info');
+                gameOver = true;
             }
 
             updateUI();
             updateStatus(result.message);
 
-            // 检查是否需要继续AI动作
-            setTimeout(() => checkAIAction(), 500);
+            // 游戏未结束才继续AI动作
+            if (!gameOver && result.game_status !== 'finished') {
+                // 检查是否需要继续AI动作
+                setTimeout(() => checkAIAction(), 500);
+            } else {
+                updateStatus('比赛结束');
+                // 如果还有下一局，自动开始
+                if (result.message.includes('下一局')) {
+                    appendMatchLog(`\n===== ${result.message} =====`, 'info');
+                    // 显示新局的目标球型信息
+                    if (result.target_ball) {
+                        const ballTypeText = result.target_ball === 'solid' ? '实心球(1-7)' : '条纹球(9-15)';
+                        appendMatchLog(`------- 第 ${result.current_game} 局比赛开始 -------`, 'success');
+                        appendMatchLog(`本局目标球型: ${ballTypeText}`);
+                    }
+                    setTimeout(() => checkAIAction(), 1000);
+                }
+            }
         }
     } catch (error) {
         updateStatus('击球失败：' + error.message);
@@ -413,6 +496,13 @@ async function checkAIAction() {
     try {
         const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);
         const status = await statusRes.json();
+
+        // 游戏已经结束，不再执行动作
+        if (status.state.game_status === 'finished') {
+            updateStatus('比赛已结束');
+            return;
+        }
+
         const currentPlayer = status.state.current_player;
         const agentType = currentPlayer === 'A' ? battleConfig.agentA : battleConfig.agentB;
 
@@ -511,7 +601,9 @@ async function updateUI() {
     document.getElementById('turn').textContent = gameState.turn;
     document.getElementById('red-score').textContent = gameState.red_score || 0;
     document.getElementById('yellow-score').textContent = gameState.yellow_score || 0;
-    document.getElementById('remaining').textContent = Object.keys(gameState.balls).length - 1;
+    // 只计数未进袋的球，排除白球
+    const remainingCount = Object.values(gameState.balls).filter(ball => !ball.pocketed && ball.id !== 'cue').length;
+    document.getElementById('remaining').textContent = remainingCount;
 
     // 如果是对战模式，更新对战相关信息
     if (isBattleMode && currentBattleId) {

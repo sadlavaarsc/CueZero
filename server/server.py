@@ -14,6 +14,8 @@ import argparse
 import copy
 import time
 import uuid
+import os
+import sys
 from typing import Dict, Optional, List
 from enum import Enum
 
@@ -62,6 +64,116 @@ class AgentType(str, Enum):
     RANDOM = "random"
 
 
+# ============== PoolEnv 适配层 ==============
+class PoolEnvAdapter:
+    """适配PoolEnv到现有BilliardsEnv接口"""
+    def __init__(self):
+        # 导入PoolEnv，关闭调试输出
+        import sys
+        import os
+        import types
+
+        # Mock agents模块，避免导入失败
+        mock_agents = types.ModuleType('agents')
+        mock_agents.Agent = object
+        mock_agents.BasicAgent = object
+        mock_agents.BasicAgentPro = object
+        mock_agents.NewAgent = object
+        sys.modules['agents'] = mock_agents
+
+        # 添加路径并导入PoolEnv
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', '大作业提交版'))
+        from poolenv import PoolEnv
+        self.env = PoolEnv(debug=False)
+        self.done = False
+        self.winner = None
+        self.balls = {}
+        self.table = None
+
+    def reset(self, target_ball='solid'):
+        """兼容原有reset接口"""
+        self.env.reset(target_ball=target_ball)
+        self.done = False
+        self.winner = None
+        self.balls = self.env.balls
+        self.table = self.env.table
+        return self.get_observation(self.env.get_curr_player())
+
+    def step(self, action):
+        """兼容原有step接口，返回(obs, reward, done, info)格式"""
+        # PoolEnv使用take_shot执行击球
+        step_info = self.env.take_shot(action)
+        self.balls = self.env.balls
+
+        # 检查游戏是否结束
+        done, info = self.env.get_done()
+        self.done = done
+        if done:
+            self.winner = info.get('winner', 'DRAW')
+            # 转换PoolEnv的SAME为DRAW
+            if self.winner == 'SAME':
+                self.winner = 'DRAW'
+
+        # 获取新的观测
+        obs = self.get_observation(self.env.get_curr_player())
+        return obs, 0, done, step_info
+
+    def get_observation(self, player):
+        """兼容原有get_observation接口"""
+        return self.env.get_observation(player)
+
+    @property
+    def hit_count(self):
+        return self.env.hit_count
+
+def convert_frontend_action_to_poolenv(action: dict) -> dict:
+    """
+    将前端发送的动作格式转换为 PoolEnv 需要的格式
+
+    前端格式: {phi: 弧度(0-2π), V0: 0-100}
+    PoolEnv格式: {V0: 0.5-8.0 m/s, phi: 0-360度, theta: 0, a: 0, b: 0}
+    """
+    # 转换 V0: 0-100 -> 0.5-8.0 m/s
+    frontend_v0 = action.get('V0', 50)
+    poolenv_v0 = 0.5 + (frontend_v0 / 100.0) * 7.5  # 0.5 到 8.0
+
+    # 转换 phi: 弧度 -> 角度 (0-360度)
+    frontend_phi = action.get('phi', 0)
+    poolenv_phi = math.degrees(frontend_phi) % 360  # 确保在 0-360 范围内
+
+    return {
+        'V0': poolenv_v0,
+        'phi': poolenv_phi,
+        'theta': 0.0,
+        'a': 0.0,
+        'b': 0.0
+    }
+
+
+def clean_step_info(step_info: dict) -> dict:
+    """
+    清理 step_info，移除不可序列化的对象（如 Ball 对象）
+    只保留可 JSON 序列化的简单类型
+    """
+    if not step_info:
+        return {}
+
+    cleaned = {}
+    # 只保留这些键，它们都是简单类型
+    allowed_keys = [
+        'ME_INTO_POCKET', 'ENEMY_INTO_POCKET',
+        'WHITE_BALL_INTO_POCKET', 'BLACK_BALL_INTO_POCKET',
+        'FOUL_FIRST_HIT', 'NO_POCKET_NO_RAIL', 'NO_HIT',
+        'winner'
+    ]
+
+    for key in allowed_keys:
+        if key in step_info:
+            cleaned[key] = step_info[key]
+
+    return cleaned
+
+
 # ============== Battle State Management ==============
 
 class BattleState:
@@ -74,7 +186,7 @@ class BattleState:
         self.agent_b = agent_b
         self.agent_a_type = agent_a_type
         self.agent_b_type = agent_b_type
-        self.env = BilliardsEnv()
+        self.env = PoolEnvAdapter()  # 使用完整PoolEnv环境
         self.current_game = 1
         self.total_games = 1
         self.results = {'A': 0, 'B': 0, 'DRAW': 0}
@@ -85,12 +197,14 @@ class BattleState:
         self.last_shot_info = None  # 记录最后一次击球的详细信息
         self.shot_history = []  # 历史击球记录
         self.created_at = time.time()
+        self.target_ball = 'solid'  # 当前局的目标球型
 
     def start_game(self, target_ball: str = 'solid'):
         """Start a new game"""
+        self.target_ball = target_ball
         self.env.reset(target_ball=target_ball)
         self.game_status = "playing"
-        self.current_player = 'A'
+        self.current_player = self.env.env.get_curr_player()  # 从PoolEnv获取初始玩家
         self.last_action = None
 
         # Reset agent buffers
@@ -108,15 +222,26 @@ class BattleState:
         # 记录击球前的状态
         start_state = self.get_ball_state()
 
-        step_info = self.env.take_shot(action)
-        self.last_action = action
+        # 转换动作格式：前端格式 -> PoolEnv 格式
+        # 检查是否是前端格式（只有 phi 和 V0）
+        if set(action.keys()) == {'phi', 'V0'}:
+            poolenv_action = convert_frontend_action_to_poolenv(action)
+        else:
+            # 已经是完整格式，直接使用
+            poolenv_action = action
+
+        step_info = self.env.step(poolenv_action)[-1]
+        self.last_action = poolenv_action
+
+        # 清理 step_info，移除不可序列化的对象
+        cleaned_step_info = clean_step_info(step_info)
 
         # 记录击球后的状态和信息
         end_state = self.get_ball_state()
         self.last_shot_info = {
             'player': self.current_player,
             'action': action,
-            'step_info': step_info,
+            'step_info': cleaned_step_info,
             'start_state': start_state,
             'end_state': end_state,
             'timestamp': time.time()
@@ -124,10 +249,10 @@ class BattleState:
         self.shot_history.append(self.last_shot_info)
 
         # Check if game is done
-        done, info = self.env.get_done()
+        done = self.env.done if hasattr(self.env, 'done') else False
         if done:
             self.game_status = "finished"
-            winner = info.get('winner', 'DRAW')
+            winner = self.env.winner if hasattr(self.env, 'winner') else 'DRAW'
             self.results[winner] += 1
             self.winner = winner
             # 记录本局结果到历史
@@ -137,10 +262,9 @@ class BattleState:
                 'results': self.results.copy(),
                 'timestamp': time.time()
             })
-        else:
-            # Switch player if no ball pocketed
-            if not step_info.get('LEGAL_INTO_POCKET'):
-                self.current_player = 'B' if self.current_player == 'A' else 'A'
+
+        # 同步PoolEnv的当前玩家
+        self.current_player = self.env.env.get_curr_player()
 
         return step_info
 
@@ -160,30 +284,100 @@ class BattleState:
             'winner': self.winner,
             'last_action': self.last_action,
             'last_shot_info': self.last_shot_info,
-            'shot_history': self.shot_history
+            'shot_history': self.shot_history,
+            'target_ball': self.target_ball
         }
 
     def get_ball_state(self) -> dict:
         """Get simplified ball state compatible with frontend render"""
         balls = {}
-        for ball in self.env.balls.values():
-            balls[ball.number if hasattr(ball, 'number') else str(ball.id)] = {
-                'pos': [ball.x, ball.y],
-                'pocketed': ball.pocketed
+        # 坐标缩放系数：pooltool单位是米，mock接口是分米，放大10倍匹配前端坐标范围
+        COORD_SCALE = 7.0  # 调整到和mock接口一致的范围
+        for ball_id, ball in self.env.balls.items():
+            # 获取球位置 - 优先从pooltool的rvw中获取
+            pos = [0, 0]
+            if hasattr(ball, 'state') and hasattr(ball.state, 'rvw'):
+                # pooltool格式：rvw[0]是位置[x, y, z]，单位米，缩放后匹配前端
+                pos = [ball.state.rvw[0][0] * COORD_SCALE, ball.state.rvw[0][1] * COORD_SCALE]
+            elif hasattr(ball, 'x') and hasattr(ball, 'y'):
+                pos = [ball.x * COORD_SCALE, ball.y * COORD_SCALE]
+            elif hasattr(ball, 'pos'):
+                pos = [ball.pos[0] * COORD_SCALE, ball.pos[1] * COORD_SCALE]
+            elif hasattr(ball, 'state'):
+                state = ball.state
+                if hasattr(state, 'x') and hasattr(state, 'y'):
+                    pos = [state.x * COORD_SCALE, state.y * COORD_SCALE]
+                elif hasattr(state, 'pos'):
+                    pos = [state.pos[0] * COORD_SCALE, state.pos[1] * COORD_SCALE]
+                elif hasattr(state, 'rv'):
+                    pos = [state.rv[0] * COORD_SCALE, state.rv[1] * COORD_SCALE]
+                elif hasattr(state, '__getitem__'):
+                    pos = [state[0] * COORD_SCALE, state[1] * COORD_SCALE]
+
+            # 调试：打印ball的属性
+            # if ball_id == 'cue':
+            #     print(f"Ball {ball_id} attributes: {dir(ball)}")
+            #     if hasattr(ball, 'state'):
+            #         print(f"Ball state attributes: {dir(ball.state)}")
+
+            # 检测是否已经进袋
+            # pooltool 中：ball.state.s == 4 表示进袋
+            pocketed = False
+            if hasattr(ball, 'state') and hasattr(ball.state, 's'):
+                pocketed = (ball.state.s == 4)
+            else:
+                pocketed = getattr(ball, 'pocketed', False)
+
+            # 获取队伍信息
+            team = None
+            if hasattr(ball, 'team'):
+                team = ball.team
+            elif str(ball_id) == '8' or ball_id == 8:
+                team = 'neutral'
+            elif str(ball_id).isdigit():
+                num = int(ball_id)
+                if num == 0 or ball_id == 'cue':
+                    team = None  # cue ball
+                elif 1 <= num <=7:
+                    team = 'red'
+                elif 9 <= num <=15:
+                    team = 'yellow'
+                elif num ==8:
+                    team = 'neutral'
+
+            balls[ball_id] = {
+                'pos': pos,
+                'pocketed': pocketed,
+                'team': team
             }
+
+        # 获取桌台信息，保持和mock接口一致的坐标范围
+        # 直接使用和mock接口一致的标准尺寸，确保比例正确
+        table_info = {
+            'left': -7,
+            'right': 7,
+            'bottom': -3.5,
+            'top': 3.5
+        }
+
+        # 计算得分
+        red_score = 0
+        yellow_score = 0
+        if hasattr(self.env, 'pocketed_balls'):
+            for b in self.env.pocketed_balls:
+                num = int(getattr(b, 'number', 0))
+                if 1 <= num < 8:
+                    red_score += 1
+                elif 9 <= num <=15:
+                    yellow_score +=1
 
         return {
             'balls': balls,
-            'table': {
-                'left': self.env.table.left,
-                'right': self.env.table.right,
-                'top': self.env.table.top,
-                'bottom': self.env.table.bottom
-            },
+            'table': table_info,
             'turn': len(self.shot_history) + 1,
             'player': self.current_player,
-            'red_score': len([b for b in self.env.pocketed_balls if int(b.number) < 8]) if hasattr(self.env, 'pocketed_balls') else 0,
-            'yellow_score': len([b for b in self.env.pocketed_balls if int(b.number) > 8]) if hasattr(self.env, 'pocketed_balls') else 0
+            'red_score': red_score,
+            'yellow_score': yellow_score
         }
 
 
@@ -291,12 +485,15 @@ class BattleNextResponse(BaseModel):
     """Battle next step response"""
     battle_id: str
     step_info: dict | None
+    action: dict | None = None  # 执行的击球动作
     game_status: str
     current_player: str
     winner: str | None
     message: str
     start_state: dict | None = None  # 击球前状态，用于前端动画
     end_state: dict | None = None  # 击球后状态，用于前端渲染
+    target_ball: str | None = None  # 当前局的目标球型 (solid/stripe)
+    current_game: int | None = None  # 当前局数
 
 
 class BattleStatusResponse(BaseModel):
@@ -450,6 +647,9 @@ async def battle_next(battle_id: str, request: BattleNextRequest) -> BattleNextR
     # Execute action
     step_info = battle.execute_action(action)
 
+    # 清理 step_info，移除不可序列化的对象
+    cleaned_step_info = clean_step_info(step_info)
+
     # Build response message
     start_state = battle.last_shot_info['start_state'] if battle.last_shot_info else None
     end_state = battle.last_shot_info['end_state'] if battle.last_shot_info else None
@@ -474,13 +674,16 @@ async def battle_next(battle_id: str, request: BattleNextRequest) -> BattleNextR
 
     return BattleNextResponse(
         battle_id=battle_id,
-        step_info=step_info,
+        step_info=cleaned_step_info,
+        action=action,
         game_status=battle.game_status,
         current_player=battle.current_player,
         winner=battle.winner,
         message=msg,
         start_state=start_state,
-        end_state=end_state
+        end_state=end_state,
+        target_ball=battle.target_ball,
+        current_game=battle.current_game
     )
 
 
