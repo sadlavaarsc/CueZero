@@ -575,28 +575,16 @@ async function executeBattleShot(action) {
                 })();
             }
 
-            // 检查是否达到最大回合数 - 只显示一次
+            // 检查是否局结束（信任后端的 game_status）
             let gameOver = false;
-            if (shotNum >= 60 && result.game_status !== 'finished') {
-                appendMatchLog(`⏰ 达到最大回合数60，比赛结束！`, 'warning');
-                // 计算剩余球数
-                let redRemaining = Object.values(gameState.balls).filter(b => b.team === 'red' && !b.pocketed).length;
-                let yellowRemaining = Object.values(gameState.balls).filter(b => b.team === 'yellow' && !b.pocketed).length;
-                appendMatchLog(`  剩余球数：红方 ${redRemaining}，黄方 ${yellowRemaining}`, 'info');
-                if (redRemaining < yellowRemaining) {
-                    appendMatchLog(`  红方获胜！`, 'success');
-                } else if (yellowRemaining < redRemaining) {
-                    appendMatchLog(`  黄方获胜！`, 'success');
+            if (result.game_status === 'finished') {
+                if (result.winner) {
+                    const winner = result.winner === 'A' ? battleConfig.agentA : battleConfig.agentB;
+                    appendMatchLog(`🏆 第 ${shotNum} 局结束，${winner} 获胜！`, 'success');
                 } else {
-                    appendMatchLog(`  双方平局！`, 'info');
+                    // 后端已处理最大回合数等情况
+                    appendMatchLog(`⏰ 第 ${shotNum} 局结束！`, 'warning');
                 }
-                gameOver = true;
-            }
-
-            // 检查是否局结束
-            if (result.game_status === 'finished' && result.winner) {
-                const winner = result.winner === 'A' ? battleConfig.agentA : battleConfig.agentB;
-                appendMatchLog(`🏆 第 ${shotNum} 局结束，${winner} 获胜！`, 'success');
 
                 // 获取最新状态更新比分
                 const statusRes = await fetch(`${CONFIG.API_BASE}/battle/${currentBattleId}/status`);

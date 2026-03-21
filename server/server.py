@@ -292,6 +292,37 @@ class BattleState:
 
         # Check if game is done
         done = self.env.done if hasattr(self.env, 'done') else False
+
+        # 额外检查：是否达到最大回合数（60）
+        hit_count = self.env.hit_count if hasattr(self.env, 'hit_count') else len(self.shot_history)
+        if not done and hit_count >= 60:
+            # 达到最大回合数，手动结束游戏
+            done = True
+            # 计算剩余球数决定胜负
+            red_remaining = 0
+            yellow_remaining = 0
+            for ball_id, ball in self.env.balls.items():
+                if hasattr(ball, 'state') and hasattr(ball.state, 's'):
+                    if ball.state.s == 4:
+                        continue  # 已进袋
+                elif getattr(ball, 'pocketed', False):
+                    continue
+                # 统计未进袋的球
+                if str(ball_id).isdigit():
+                    num = int(ball_id)
+                    if 1 <= num < 8:
+                        red_remaining += 1
+                    elif 9 <= num <= 15:
+                        yellow_remaining += 1
+            # 决定胜者
+            if red_remaining < yellow_remaining:
+                self.env.winner = 'A'
+            elif yellow_remaining < red_remaining:
+                self.env.winner = 'B'
+            else:
+                self.env.winner = 'DRAW'
+            self.env.done = True
+
         if done:
             self.game_status = "finished"
             winner = self.env.winner if hasattr(self.env, 'winner') else 'DRAW'
