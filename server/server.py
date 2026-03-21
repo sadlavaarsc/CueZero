@@ -323,6 +323,9 @@ class BattleState:
                 self.env.winner = 'DRAW'
             self.env.done = True
 
+        # 重新检查 done 状态（可能在上面被修改了）
+        done = self.env.done if hasattr(self.env, 'done') else done
+
         if done:
             self.game_status = "finished"
             winner = self.env.winner if hasattr(self.env, 'winner') else 'DRAW'
