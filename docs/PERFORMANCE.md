@@ -26,10 +26,10 @@ Despite billiards being a more complex task than traditional board games, CueZer
 
 ### Win Rates Against Baseline Agents
 
-| Opponent | Win Rate | Rating |
-|----------|----------|--------|
-| BasicAgent | **95%** | 🏆 Excellent |
-| BasicAgentPro | **80%** | 🏆 Excellent |
+| Opponent | Win Rate | Notes |
+|----------|----------|-------|
+| BasicAgent | **95%** | Bayesian optimization-based, beginner level |
+| BasicAgentPro | **80%** | Advanced physics-based, ~85% win rate vs BasicAgent, experienced player level |
 
 *Test conditions: 120 games with 4× rotation (first/second turn × ball type distribution)*
 
