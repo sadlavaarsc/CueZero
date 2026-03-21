@@ -106,28 +106,7 @@ Access the Web UI at: http://localhost:8000
 
 CueZero's architecture follows a neural-guided search pipeline:
 
-```
-Game State (81D)
-      │
-      ▼
-┌─────────────────────────────────┐
-│  Policy-Value Network           │
-│  - Shared Feature Extractor     │
-│  - Policy Head (5D action)     │
-│  - Value Head (win prob)       │
-└─────────────┬───────────────────┘
-              │
-              ▼
-┌─────────────────────────────────┐
-│  Continuous-Action MCTS         │
-│  - Ghost Ball Heuristic         │
-│  - Policy-guided Pruning        │
-│  - Hybrid Evaluation            │
-└─────────────┬───────────────────┘
-              │
-              ▼
-      Optimal Shot (5D)
-```
+![Architecture](./assets/architecture.png)
 
 ### Core Components
 

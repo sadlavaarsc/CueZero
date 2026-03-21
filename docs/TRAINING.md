@@ -2,6 +2,8 @@
 
 CueZero uses a three-stage training pipeline to iteratively improve its performance. The system combines supervised pre-training with self-play reinforcement learning.
 
+![Training Pipeline](../assets/training_pipeline.png)
+
 ## Training Overview
 
 | Phase | Description | Duration |

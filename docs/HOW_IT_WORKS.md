@@ -8,46 +8,7 @@ This document explains the technical details of how CueZero works under the hood
 
 CueZero follows a neural-guided search architecture inspired by AlphaZero, but specially adapted for continuous action spaces and the unique challenges of billiards.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          Game State                              │
-│  (81D vector: ball positions, velocities, pocket status)       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Policy-Value Network                          │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Shared Convolutional Feature Extractor                   │  │
-│  │  Input: 3 × 81D state sequence                           │  │
-│  └────────────────────┬──────────────────────────────────────┘  │
-│                       │                                           │
-│         ┌─────────────┴─────────────┐                           │
-│         ▼                           ▼                           │
-│  ┌───────────────┐         ┌───────────────┐                   │
-│  │ Policy Head   │         │  Value Head   │                   │
-│  │ (5D action)   │         │ (Win prob)    │                   │
-│  └───────────────┘         └───────────────┘                   │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Continuous-Action MCTS Search                       │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  1. Heuristic Action Generation (Ghost Ball)              │  │
-│  │  2. Policy-guided Candidate Pruning                        │  │
-│  │  3. UCB-based Selection                                     │  │
-│  │  4. Hybrid Evaluation (Network + Simulation)               │  │
-│  │  5. Backpropagation                                         │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │  Optimal Shot   │
-                    │  (5D action)    │
-                    └─────────────────┘
-```
+![Architecture](../assets/architecture.png)
 
 ---
 
@@ -266,6 +227,10 @@ normalized_reward = clip(normalized_reward, 0.0, 1.0)
 ---
 
 ## Training Pipeline
+
+The overall system follows a neural-guided search pipeline with iterative self-improvement:
+
+![Training Pipeline](../assets/training_pipeline.png)
 
 See [TRAINING.md](./TRAINING.md) for detailed training documentation.
 
