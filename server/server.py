@@ -56,6 +56,36 @@ web_dir = os.path.join(os.path.dirname(__file__), '..', 'web')
 app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
 
+# ==================== 坐标转换函数 ====================
+def swap_coordinates_state(state: dict) -> dict:
+    """
+    转换状态中的所有坐标：交换 x 和 y
+    同时也交换桌子的 left/right 和 bottom/top
+    """
+    import copy
+    new_state = copy.deepcopy(state)
+
+    # 转换球的位置
+    if 'balls' in new_state:
+        for ball_id, ball in new_state['balls'].items():
+            if 'pos' in ball and len(ball['pos']) >= 2:
+                ball['pos'] = [ball['pos'][1], ball['pos'][0]]
+
+    # 转换桌子坐标
+    if 'table' in new_state:
+        table = new_state['table']
+        # 交换 left/right 和 bottom/top
+        new_table = {
+            'left': table.get('bottom', -3.5),
+            'right': table.get('top', 3.5),
+            'bottom': table.get('left', -7),
+            'top': table.get('right', 7)
+        }
+        new_state['table'] = new_table
+
+    return new_state
+
+
 class AgentType(str, Enum):
     """Supported agent types"""
     HUMAN = "human"
@@ -373,7 +403,7 @@ class BattleState:
                 elif 9 <= num <=15:
                     yellow_score +=1
 
-        return {
+        state = {
             'balls': balls,
             'table': table_info,
             'turn': len(self.shot_history) + 1,
@@ -381,6 +411,7 @@ class BattleState:
             'red_score': red_score,
             'yellow_score': yellow_score
         }
+        return swap_coordinates_state(state)
 
 
 # Battle storage
@@ -520,7 +551,7 @@ async def root() -> HTMLResponse:
 @app.get("/api/state")
 async def get_state() -> dict:
     """获取当前游戏状态"""
-    return get_initial_state()
+    return swap_coordinates_state(get_initial_state())
 
 
 @app.post("/api/shot", response_model=ShotResponse)
@@ -543,8 +574,8 @@ async def execute_shot(request: ShotRequest) -> ShotResponse:
 
         return ShotResponse(
             success=True,
-            start_state=start_state,
-            end_state=end_state,
+            start_state=swap_coordinates_state(start_state),
+            end_state=swap_coordinates_state(end_state),
             message=message
         )
     except Exception as e:
@@ -554,7 +585,7 @@ async def execute_shot(request: ShotRequest) -> ShotResponse:
 @app.post("/api/reset")
 async def reset_game() -> dict:
     """重置游戏"""
-    return {"success": True, "state": get_initial_state()}
+    return {"success": True, "state": swap_coordinates_state(get_initial_state())}
 
 
 @app.post("/api/battle/start", response_model=BattleStartResponse)

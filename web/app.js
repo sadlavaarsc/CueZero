@@ -63,15 +63,21 @@ function distance(p1, p2) {
 function toCanvas(pos) {
     if (!gameState) return [0, 0];
     const table = gameState.table;
-    // 后端坐标已经是横向布局：x ∈ [-7,7], y ∈ [-3.5,3.5]
-    const tableWidth = table.right - table.left;
-    const tableHeight = table.top - table.bottom;
+    // 后端坐标已经交换过 x/y，现在 left/right 是纵向，bottom/top 是横向
+    const realTableLeft = table.bottom;
+    const realTableRight = table.top;
+    const realTableBottom = table.left;
+    const realTableTop = table.right;
+    const tableWidth = realTableRight - realTableLeft;
+    const tableHeight = realTableTop - realTableBottom;
     const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
     const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
     const scale = Math.min(scaleX, scaleY);
-    // 直接映射，y轴翻转使视觉符合习惯（y向下增加）
-    const x = CONFIG.TABLE_PADDING + (pos[0] - table.left) * scale;
-    const y = canvas.height - CONFIG.TABLE_PADDING - (pos[1] - table.bottom) * scale;
+    // 交换坐标 x/y，同时 y 轴翻转
+    const realX = pos[1];
+    const realY = pos[0];
+    const x = CONFIG.TABLE_PADDING + (realX - realTableLeft) * scale;
+    const y = canvas.height - CONFIG.TABLE_PADDING - (realY - realTableBottom) * scale;
     return [x, y];
 }
 
@@ -81,12 +87,12 @@ function toGame(x, y) {
     const table = gameState.table;
     const tableWidth = table.right - table.left;
     const tableHeight = table.top - table.bottom;
-    const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
-    const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
+    const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableHeight;
+    const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableWidth;
     const scale = Math.min(scaleX, scaleY);
-    // 逆向转换，y轴翻转
-    const gameX = table.left + (x - CONFIG.TABLE_PADDING) / scale;
-    const gameY = table.bottom + (canvas.height - CONFIG.TABLE_PADDING - y) / scale;
+    // 交换回来，同时y轴翻转
+    const gameX = table.left + (canvas.height - CONFIG.TABLE_PADDING - y) / scale;
+    const gameY = table.bottom + (x - CONFIG.TABLE_PADDING) / scale;
     return [gameX, gameY];
 }
 
