@@ -1,333 +1,283 @@
-# CueZero
+# CueZero: 高性能台球 AI 系统
 
 [English](./README.md) | [中文](./README_zh.md)
 
-![Python](https://img.shields.io/badge/python-3.10-blue)
-![Framework](https://img.shields.io/badge/PyTorch-RL-red)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0-red)
 ![MCTS](https://img.shields.io/badge/MCTS-Continuous-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-CueZero是一个台球强化学习系统，结合了神经网络和连续动作蒙特卡洛树搜索（MCTS）来解决高维决策问题。
+![Demo](./assets/demo.gif)
 
-## 项目概述
+## 📌 项目概述
 
-CueZero是一个为连续控制任务设计的高性能台球AI。与传统的用于离散游戏的AlphaZero实现不同，CueZero处理5维连续动作空间和81维状态空间。
+CueZero 是一个高性能台球 AI 系统，将深度强化学习与专门设计的连续动作蒙特卡洛树搜索（MCTS）相结合。它解决了在高维连续状态和动作空间中进行决策的难题，同时处理复杂的物理动力学。
 
-该系统集成了：
+**核心亮点**：
+- 81 维状态表示，5 维连续动作空间
+- **极小模型（约 160K 参数）**，尽管台球比传统棋类更复杂
+- 特制 MCTS 实现 **54 倍搜索空间压缩**
+- 对抗规则型基线 Agent 达到 **95% 胜率**
+- 在思源一号集群上，60 回合比赛 **< 3 分钟**
+- MCTS-Fast 模式：消费级硬件上 **180 倍加速**（3 分钟 → 1 秒）
 
-- 策略-价值神经网络
-- 连续动作MCTS
-- 基于物理的仿真
+---
 
-以在随机且高度动态的环境中实现强大的性能。
+## 🎯 核心成果
 
-## 关键特性
+### 对战表现
 
-- **连续动作MCTS**：通过策略引导的局部搜索将传统MCTS扩展到5D连续动作空间
-- **策略-价值网络**：从81D状态输入中学习动作分布和状态价值
-- **自对弈训练 pipeline**：自动数据生成和迭代模型改进
-- **物理仿真集成**：使用pooltool进行精确的环境建模
-- **混合评估**：结合学习到的价值估计和基于仿真的滚动
+| 对手 | 胜率 | 评级 |
+|------|------|------|
+| BasicAgent | **95%** | 🏆 优秀 |
+| BasicAgentPro | **80%** | 🏆 优秀 |
 
-## 架构
-
-![Architecture](./assets/architecture.png)
-
-整个系统遵循神经引导的搜索 pipeline：
-
-CueZero的架构由四个核心组件组成：
-
-1. **策略网络**：接收81维状态向量（包含球的位置、速度和游戏状态）作为输入，并输出5维动作向量（速度、角度等）
-2. **价值网络**：与策略网络共享相同的卷积特征提取器，预测当前状态下获胜的概率
-3. **蒙特卡洛树搜索**：针对连续动作空间进行优化，使用策略网络引导搜索，价值网络评估位置
-4. **闭环训练**：结合专家数据预训练和自对弈，持续改进模型性能
-
-## 训练流程
-
-![training pipeline](./assets/training_pipeline.png)
-
-1. **预训练**：使用BasicAgent生成的数据通过监督学习初始化网络
-2. **自对弈训练**：AI与自身对弈生成高质量训练数据
-3. **数据集构建**：处理和准备对局数据用于训练
-4. **模型训练**：在生成的数据上训练神经网络
-5. **评估**：评估模型与基线代理的性能
-
-## 结果
-
-### 基线 Agent
-
-| Agent | 描述 | 水平 |
-|-------|------|------|
-| **BasicAgent** | 基于贝叶斯优化的规则型 Agent。无明显战术意识，容易犯规和失误。 | 🎱 新手玩家（不熟练） |
-| **BasicAgentPro** | 增强物理基线 Agent，具备进攻策略、风险评估和长线规划能力。 | 🎯 熟练玩家（有经验） |
-
-### CueZero 对战基线
-
-| 对手            | 胜率    | 评级     |
-|-----------------|---------|----------|
-| BasicAgent      | **95%** | 🏆 优秀  |
-| BasicAgentPro   | **80%** | 🏆 优秀  |
-
-*测试条件：120 局比赛，4 的倍数轮换（先后手×球型分配）*
-
-AI展示了先进的战术意识，包括连续击球能力和战略防守 maneuver。它偶尔会出现"完美游戏"，在一个回合内清台。
+*测试条件：120 局比赛，4 的倍数轮换（先后手 × 球型分配）*
 
 ### 性能基准
 
-- **≥70% vs BasicAgent**: 优秀性能阈值
-- **CueZero 达到 95%**: 显著超越基线
-- **80% vs BasicAgentPro**: 对抗增强物理基线的强劲表现
-## 核心挑战与解决方案
+| 指标 | 数值 |
+|------|------|
+| **完整比赛（60 回合）** | < 3 分钟（思源一号集群） |
+| **MCTS-Full 决策** | 每杆约 3 分钟（消费级 PC） |
+| **MCTS-Fast 决策** | 每杆约 1 秒（消费级 PC） |
+| **搜索空间压缩** | 比暴力搜索小 54 倍 |
+| **模型大小** | 约 160K 参数（非常小！） |
+| **训练效率** | 约 200 轮学会基本操作 |
+| **总训练轮次** | 约 1000 轮 |
 
-| 挑战                                | 解决方案                                                               |
-| ----------------------------------- | ---------------------------------------------------------------------- |
-| 高维度（81D状态，5D动作）           | 带有卷积特征提取的自定义神经网络架构                                   |
-| 连续动作空间                        | 带有局部邻域搜索的策略引导MCTS                                         |
-| 强不确定性                          | 结合神经预测和物理仿真的混合评估                                       |
-| 实时要求                            | 带有剪枝和有限节点扩展的优化MCTS                                       |
-| 混沌行为                            | 幽灵球启发式 + 随机扰动采样 + 策略筛选                                 |
+### 硬件配置
 
-## 快速开始
+**训练集群（思源一号）**：
+- CPU：Intel Xeon ICX Platinum 8358
+- GPU：NVIDIA HGX A100
 
-### 环境配置
+**消费级部署**：
+- MCTS-Fast 可在普通笔记本/台式机上运行
+
+---
+
+## 🚀 快速开始
+
+### 前置要求
+- Ubuntu 22.04（推荐）
+- Python 3.13
+- Conda
+
+### 最小化安装
 
 ```bash
-# 创建 conda 环境（推荐 Python 3.10+）
-# 注意：本项目使用 'poolenv' 环境
+# 创建并激活 conda 环境
+conda create -n poolenv python=3.13
 conda activate poolenv
 
-# 如果还没有环境，创建它：
-conda create -n poolenv python=3.10
-conda activate poolenv
-
-# 安装 pooltool（台球物理引擎）
-# 从源码安装（推荐）：
-git clone https://github.com/bboland/pooltool.git
-cd pooltool && pip install -e .
+# 安装 pooltool 物理引擎
+git clone https://github.com/SJTU-RL2/pooltool.git
+cd pooltool
+pip install "poetry==2.2.1"
+poetry install --with=dev,docs
 cd ..
 
-# 安装依赖
+# 安装 CueZero 依赖
 pip install -r requirements.txt
-
-# 安装包（可选，用于开发）
-pip install -e .
+pip install bayesian-optimization numpy
 ```
 
-### 运行评估
+详细安装指南请参考 [docs/INSTALLATION.md](./docs/INSTALLATION.md)。
+
+### 运行第一局比赛
 
 ```bash
-# 对抗基线代理评估
-python scripts/evaluate.py
+# CLI：MCTS-Fast vs BasicAgent（5 局）
+python scripts/cli_game.py --agent-a mcts_fast --agent-b basic --games 5
+
+# Web UI（mock 模式，无需模型）
+PYTHONPATH=. python -m server.server
+
+# 带 AI 的 Web UI（需要 dual_network_final.pt）
+PYTHONPATH=. python -m server.server --ai
+```
+
+访问 Web UI：http://localhost:8000
+
+---
+
+## 📂 系统架构
+
+CueZero 的架构采用神经引导的搜索流水线：
+
+```
+游戏状态（81D）
+      │
+      ▼
+┌─────────────────────────────────┐
+│  策略-价值网络                   │
+│  - 共享特征提取器                │
+│  - 策略头（5D 动作）            │
+│  - 价值头（胜率）                │
+└─────────────┬───────────────────┘
+              │
+              ▼
+┌─────────────────────────────────┐
+│  连续动作 MCTS                   │
+│  - 幽灵球启发式                  │
+│  - 策略引导剪枝                  │
+│  - 混合评估                      │
+└─────────────┬───────────────────┘
+              │
+              ▼
+      最优击球动作（5D）
+```
+
+### 核心组件
+
+1. **策略-价值网络**：接收连续 3 局 81D 状态，输出 5D 动作分布和胜率
+2. **连续动作 MCTS**：专为台球设计，结合启发式搜索和策略引导
+3. **自对弈流水线**：自动数据生成和迭代模型改进
+4. **物理仿真**：与 pooltool 集成实现精确的环境建模
+
+深入技术原理请参考 [docs/HOW_IT_WORKS.md](./docs/HOW_IT_WORKS.md)。
+
+---
+
+## 🔧 工程亮点
+
+### 1. 面向复杂任务的轻量化模型架构
+
+**挑战**：台球本质上比国际象棋/围棋等传统棋类更复杂，具有连续物理、随机结果和高维状态/动作空间。
+
+**解决方案**：精心设计的轻量化网络：
+- **共享特征提取器**：2 层全连接 + GRU 用于时空特征融合
+- **策略头**：2 层全连接用于 5D 动作预测
+- **价值头**：2 层全连接用于胜率估计
+- **总参数量**：仅 **约 160K**（极其紧凑！）
+
+**为什么有效**：智能的架构设计优先关注本质特征（球的位置、速度、进袋状态），同时避免不必要的复杂性。尽管模型很小，仍能取得强大的性能。
+
+### 2. 连续动作空间的特制 MCTS
+
+**挑战**：5D 连续动作空间，即使采用粗略离散化也有约 243,000+ 种潜在组合。
+
+**解决方案**：
+- **幽灵球启发式**：几何生成约 30 个高质量候选
+- **策略引导剪枝**：保留前 2/3 候选（减少 66%）
+- **结果**：搜索空间缩小 54 倍（4,500 次评估 vs 243,000 种组合）
+
+```
+暴力搜索：243,000 种组合
+CueZero：    4,500 次评估
+──────────────────────────────
+压缩率：      54 倍！
+```
+
+### 3. 双 MCTS 模式适配不同场景
+
+| 特性 | MCTS-Full | MCTS-Fast |
+|------|-----------|-----------|
+| 模拟次数 | 150 | 30 |
+| 最大深度 | 4 | 2 |
+| 超时时间 | 15s | 3s |
+| 决策时间 | ~3 分钟（消费级 PC） | ~1 秒（消费级 PC） |
+| 对战 Basic 胜率 | 95% | 90% |
+| 使用场景 | 强对弈 | 实时、Web UI |
+
+**MCTS-Fast**：180 倍加速，仅牺牲 5% 胜率。
+
+### 4. 高效训练流水线
+
+- **预训练**：约 200 轮 BasicAgent 数据（学习基本击球）
+- **自对弈训练**：约 600 轮，MCTS 引导的数据生成
+- **补充训练**：约 200 轮，专门化优化
+- **总计**：约 1000 轮达到完整性能
+
+**关键优化**：与朴素强化学习相比，启发式搜索将训练速度提升 3-5 倍。
+
+完整训练文档请参考 [docs/TRAINING.md](./docs/TRAINING.md)。
+
+### 5. 混合评估策略
+
+结合神经网络预测与物理仿真：
+- **浅层深度**：更多仿真（准确但较慢）
+- **深层深度**：更多网络（快速但略不准确）
+- **动态加权**：基于搜索深度平滑过渡
+
+---
+
+## 📖 文档
+
+| 文档 | 描述 |
+|------|------|
+| [docs/INSTALLATION.md](./docs/INSTALLATION.md) | 详细安装和环境配置指南 |
+| [docs/TRAINING.md](./docs/TRAINING.md) | 完整训练流水线和自对弈文档 |
+| [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) | 性能基准和优化细节 |
+| [docs/HOW_IT_WORKS.md](./docs/HOW_IT_WORKS.md) | 架构和算法的深入技术解析 |
+
+---
+
+## 🎮 使用示例
+
+### CLI 对战
+
+```bash
+# 人类 vs MCTS-Full
+python scripts/cli_game.py --agent-a human --agent-b mcts_full --games 3
+
+# MCTS-Fast vs BasicAgentPro
+python scripts/cli_game.py --agent-a mcts_fast --agent-b basic_pro --games 10
+
+# 查看所有选项
+python scripts/cli_game.py --help
 ```
 
 ### Web UI
 
-CueZero 包含一个基于 Web 的 UI，用于可视化和与 AI 交互。
-
 ```bash
-# 启动 Web 服务器（mock 模式 - 默认）
-# 在项目根目录执行，无需 cd 到 server 目录
-PYTHONPATH=. python -m server.server
-
-# 使用 AI 模式（需要 dual_network_final.pt 模型文件）
-PYTHONPATH=. python -m server.server --ai
-
-# 访问 http://localhost:8000
+# 使用默认 Agent 启动
+PYTHONPATH=. python -m server.server --agent-a mcts_fast --agent-b basic
 ```
 
-Web UI 支持：
-- 可视化台球桌和球的位置
-- 执行击球并查看结果
-- 获取 AI 推荐的击球动作（AI 模式）
-
-### CLI 对战
-
-CueZero 提供命令行界面进行 Agent 对战。
+### REST API
 
 ```bash
-# 快速开始：MCTS(Fast) vs Basic
-python scripts/cli_game.py --agent-a mcts_fast --agent-b basic --games 5
-
-# Human vs MCTS(Full)
-python scripts/cli_game.py --agent-a human --agent-b mcts_full --games 3
-
-# 查看完整参数
-python scripts/cli_game.py --help
-```
-
-**参数说明**：
-- `--agent-a`: Agent A 类型 (human, mcts_fast, mcts_full, policy, basic, random)
-- `--agent-b`: Agent B 类型
-- `--games`: 对战局数
-- `--model`: 模型文件路径
-- `--no-verbose`: 禁用详细输出
-- `--seed`: 随机种子
-
-### Agent 类型说明
-
-| 类型         | 描述                                   | 使用场景           |
-|--------------|----------------------------------------|--------------------|
-| human        | 人工操作，通过命令行输入               | 人机对战、测试     |
-| mcts_fast    | MCTS 快速模式 (30 次模拟，深度 2)        | 实时对战、快速测试 |
-| mcts_full    | MCTS 完整模式 (150 次模拟，深度 4)       | 强对弈、离线分析   |
-| policy       | 策略网络直接预测                       | 快速推理           |
-| basic        | 基于启发式规则                         | 基线对比           |
-| random       | 随机动作                               | 测试、调试         |
-
-### 服务端对战 API
-
-服务器支持通过 REST API 进行 Agent 对战。
-
-```bash
-# 启动服务器（指定默认 Agent）
-python server.py --agent-a mcts_fast --agent-b basic
-
-# 使用 API 开始对战
+# 开始新对战
 curl -X POST http://localhost:8000/api/battle/start \
   -H "Content-Type: application/json" \
   -d '{"agent_a_type": "human", "agent_b_type": "mcts_fast", "total_games": 3}'
 
-# 执行下一步（自动获取 AI 决策）
+# 执行下一步
 curl -X POST http://localhost:8000/api/battle/{battle_id}/next \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# 获取对战状态
-curl http://localhost:8000/api/battle/{battle_id}/status
-
-# 列出所有对战
-curl http://localhost:8000/api/battles
+  -H "Content-Type: application/json" -d '{}'
 ```
 
-### MCTS 模式
+### Agent 类型
 
-MCTS 实现支持两种模式，用于不同的使用场景：
+| 类型 | 描述 | 使用场景 |
+|------|------|----------|
+| `human` | 通过 CLI/Web UI 的人类玩家 | 人机对战 |
+| `mcts_fast` | 快速 MCTS（30 次模拟，深度 2，3 秒） | 实时对战、Web UI |
+| `mcts_full` | 完整 MCTS（150 次模拟，深度 4，15 秒） | 强对弈、离线分析 |
+| `policy` | 策略网络直接输出 | 快速推理 |
+| `basic` | 启发式规则型 | 基线对比 |
+| `basic_pro` | 增强物理型 | 高级基线 |
+| `random` | 随机动作 | 测试、调试 |
 
-```python
-from cuezero.mcts.search import MCTS
+---
 
-# 快速模式：快速决策（30 次模拟，深度 2, 3 秒超时）
-mcts_fast = MCTS(model=model, mode="fast")
+## 🙏 致谢
 
-# 完整模式：强对弈（150 次模拟，深度 4, 15 秒超时）
-mcts_full = MCTS(model=model, mode="full")
+本项目的计算结果得到了**上海交通大学高性能计算中心思源一号集群**的支持和帮助。
 
-# 自定义配置（覆盖模式默认值）
-mcts_custom = MCTS(model=model, mode="fast", n_simulations=50, max_depth=3)
-```
+本项目最初作为上海交通大学的课程项目开发，随后被完善为独立的工程项目。实现灵感来自 AlphaZero 原理，并针对连续动作台球的独特挑战进行了适配。
 
-| 模式   | 模拟次数 | 最大深度 | 超时   | 使用场景         |
-|--------|----------|----------|--------|------------------|
-| fast   | 30       | 2        | 3s     | 实时对弈、Web UI |
-| full   | 150      | 4        | 15s    | 离线分析、强对弈 |
+---
 
-### 训练
+## 📄 许可证
 
-```bash
-# 生成自对弈数据
-python scripts/selfplay.py
+MIT 许可证 - 详见 LICENSE 文件。
 
-# 训练模型
-python scripts/train.py
-```
+---
 
-### 配置
+## 🔗 相关链接
 
-修改 `configs/` 目录中的 YAML 文件：
-- `model.yaml`: 网络架构和输入/输出维度
-- `training.yaml`: 训练超参数
-- `mcts.yaml`: MCTS 搜索参数
-
-## 模型文件
-
-预训练模型文件 `dual_network_final.pt` 应放置在项目根目录。
-
-模型架构包括：
-- **SharedFeatureExtractor**: 处理 3x81 维状态向量（连续 3 局状态）
-- **PolicyHead**: 输出 5 维动作向量（速度、角度、偏移）
-- **ValueHead**: 输出胜率估计
-
-模型文件格式：PyTorch state dict，包含 `feature_extractor`、`policy_head` 和 `value_head` 组件。
-
-## 项目结构
-
-```
-cuezero/
-│
-├── README.md
-├── requirements.txt
-├── setup.py
-├── pyproject.toml
-│
-├── configs/
-│   ├── training.yaml
-│   ├── mcts.yaml
-│   └── model.yaml
-│
-├── cuezero/
-│   ├── env/
-│   │   ├── billiards_env.py     # 台球环境实现
-│   │   ├── state_encoder.py     # 神经网络状态编码
-│   │   └── physics_wrapper.py   # 物理引擎包装器
-│   │
-│   ├── models/
-│   │   ├── policy_network.py    # 动作预测策略网络
-│   │   ├── value_network.py     # 位置评估价值网络
-│   │   └── networks.py          # 组合策略-价值网络
-│   │
-│   ├── mcts/
-│   │   ├── tree.py              # MCTS树实现
-│   │   ├── node.py              # MCTS节点实现
-│   │   └── search.py            # MCTS搜索算法
-│   │
-│   ├── selfplay/
-│   │   ├── selfplay_worker.py   # 自对弈游戏生成
-│   │   └── dataset_builder.py   # 训练数据集构建
-│   │
-│   ├── training/
-│   │   ├── trainer.py           # 模型训练逻辑
-│   │   ├── loss.py              # 损失函数
-│   │   └── replay_buffer.py     # 经验回放缓冲区
-│   │
-│   ├── inference/
-│   │   └── agent.py             # 推理代理
-│   │
-│   └── utils/
-│       ├── logger.py            # 日志工具
-│       └── config.py            # 配置管理
-│
-├── scripts/
-│   ├── train.py                 # 训练脚本
-│   ├── selfplay.py              # 自对弈数据生成
-│   ├── evaluate.py              # 评估脚本
-│   └── cli_game.py              # CLI 对战界面
-│
-├── server/
-│   ├── server.py                # Web 服务器（含对战 API）
-│   └── mock_env.py              # Mock 环境
-│
-└── experiments/
-    └── baseline_eval.py         # 基线代理评估
-```
-
-## 未来方向
-
-### 系统与工程
-
-- **模块化服务架构**：将训练、自对弈和推理重构为具有清晰接口的独立服务（如RPC/REST），实现可扩展部署
-- **分布式自对弈**：跨多个工作节点或机器并行化数据生成，提高训练吞吐量
-- **实验管理**：集成配置跟踪、日志记录和可复现性工具（如结构化配置、版本化检查点）
-- **性能优化**：通过批处理、缓存和混合精度推理优化MCTS和仿真瓶颈
-- **模型服务与部署**：通过推理API公开训练好的代理，用于实时决策或外部集成
-- **可视化与调试工具**：构建轨迹回放、决策检查和训练诊断工具
-
-### 算法与建模
-
-- **改进策略表示**：探索更具表达力的模型（如注意力机制）以实现更好的空间推理
-- **高效连续搜索**：研究连续动作空间中更样本高效的探索策略
-- **不确定性建模**：将随机建模或置信度估计纳入价值预测
-- **课程学习**：设计渐进式训练方案，稳定复杂环境中的学习
-- **混合方法**：将基于学习的方法与分析或基于物理的先验相结合
-
-## 致谢
-
-该项目最初是在学术环境中开发的，后来被重构为独立的工程项目。实现灵感来自AlphaZero原理，并适应了台球的独特挑战。
+- [pooltool](https://github.com/SJTU-RL2/pooltool) - 台球物理引擎
+- [AlphaZero](https://deepmind.google/discover/blog/alphazero-shedding-new-light-on-chess-shogi-and-go/) - 本项目的灵感来源
