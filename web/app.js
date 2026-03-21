@@ -33,6 +33,9 @@ let aimStart = null;
 let aimCurrent = null;
 let power = 0;
 
+// 调试面板状态
+let debugPanelExpanded = true;
+
 // 对战模式状态
 let currentBattleId = null;
 let battleConfig = null;
@@ -59,25 +62,31 @@ function distance(p1, p2) {
     return Math.sqrt(Math.pow(p2[0] - p1[0], 2) + Math.pow(p2[1] - p1[1], 2));
 }
 
-// 坐标转换：游戏坐标 -> 画布坐标
+// 坐标转换：游戏坐标 -> 画布坐标（统一用于球桌、球袋、球）
 function toCanvas(pos) {
     if (!gameState) return [0, 0];
     const table = gameState.table;
-    // 后端坐标已经交换过 x/y，现在 left/right 是纵向，bottom/top 是横向
-    const realTableLeft = table.bottom;
-    const realTableRight = table.top;
-    const realTableBottom = table.left;
-    const realTableTop = table.right;
-    const tableWidth = realTableRight - realTableLeft;
-    const tableHeight = realTableTop - realTableBottom;
+
+    // 安全检查：确保输入坐标有效
+    if (!pos || pos.length !== 2 ||
+        typeof pos[0] !== 'number' || typeof pos[1] !== 'number' ||
+        !isFinite(pos[0]) || !isFinite(pos[1])) {
+        return [canvas.width / 2, canvas.height / 2]; // 默认返回中心
+    }
+
+    const tableWidth = table.right - table.left;
+    const tableHeight = table.top - table.bottom;
     const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
     const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
     const scale = Math.min(scaleX, scaleY);
-    // 交换坐标 x/y，同时 y 轴翻转
-    const realX = pos[1];
-    const realY = pos[0];
-    const x = CONFIG.TABLE_PADDING + (realX - realTableLeft) * scale;
-    const y = canvas.height - CONFIG.TABLE_PADDING - (realY - realTableBottom) * scale;
+
+    // 先钳制游戏坐标在球桌范围内
+    const safeX = Math.max(table.left, Math.min(table.right, pos[0]));
+    const safeY = Math.max(table.bottom, Math.min(table.top, pos[1]));
+
+    // 直接映射后端坐标，y 轴翻转
+    const x = CONFIG.TABLE_PADDING + (safeX - table.left) * scale;
+    const y = canvas.height - CONFIG.TABLE_PADDING - (safeY - table.bottom) * scale;
     return [x, y];
 }
 
@@ -87,12 +96,12 @@ function toGame(x, y) {
     const table = gameState.table;
     const tableWidth = table.right - table.left;
     const tableHeight = table.top - table.bottom;
-    const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableHeight;
-    const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableWidth;
+    const scaleX = (canvas.width - 2 * CONFIG.TABLE_PADDING) / tableWidth;
+    const scaleY = (canvas.height - 2 * CONFIG.TABLE_PADDING) / tableHeight;
     const scale = Math.min(scaleX, scaleY);
-    // 交换回来，同时y轴翻转
-    const gameX = table.left + (canvas.height - CONFIG.TABLE_PADDING - y) / scale;
-    const gameY = table.bottom + (x - CONFIG.TABLE_PADDING) / scale;
+    // 逆向转换
+    const gameX = table.left + (x - CONFIG.TABLE_PADDING) / scale;
+    const gameY = table.bottom + (canvas.height - CONFIG.TABLE_PADDING - y) / scale;
     return [gameX, gameY];
 }
 
@@ -109,6 +118,9 @@ function render() {
     if (isAiming || isDragging) {
         drawAim();
     }
+
+    // 更新调试信息（画布坐标）
+    updateDebugCanvas();
 }
 
 function drawTable() {
@@ -151,11 +163,19 @@ function drawPockets() {
 
 function drawBalls() {
     const stateToRender = isAnimating && currentState ? currentState : gameState;
+    if (!stateToRender || !stateToRender.balls) return;
 
     Object.entries(stateToRender.balls).forEach(([id, ball]) => {
-        if (ball.pocketed) return;
+        if (!ball || ball.pocketed) return;
+        if (!ball.pos || ball.pos.length !== 2) return;
 
         const [x, y] = toCanvas(ball.pos);
+
+        // 额外安全检查：确保在画布范围内
+        if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) {
+            console.warn(`Ball ${id} has invalid canvas position: (${x}, ${y}), skipping`);
+            return;
+        }
 
         // 确定颜色（纯色，无渐变）
         let color;
@@ -267,6 +287,92 @@ function drawAim() {
     }
 }
 
+// ==================== 调试信息 ====================
+function toggleDebugPanel() {
+    debugPanelExpanded = !debugPanelExpanded;
+    const content = document.getElementById('debug-content');
+    const toggle = document.getElementById('debug-toggle');
+    if (debugPanelExpanded) {
+        content.classList.remove('collapsed');
+        toggle.textContent = '▼';
+    } else {
+        content.classList.add('collapsed');
+        toggle.textContent = '▶';
+    }
+}
+
+function updateDebugBackend() {
+    if (!gameState) return;
+
+    const backendEl = document.getElementById('debug-backend');
+    let info = '';
+
+    // 球桌信息
+    const table = gameState.table;
+    info += '=== 球桌信息 ===\n';
+    info += `left: ${table.left?.toFixed(2)}, right: ${table.right?.toFixed(2)}\n`;
+    info += `bottom: ${table.bottom?.toFixed(2)}, top: ${table.top?.toFixed(2)}\n`;
+    info += `宽: ${(table.right - table.left)?.toFixed(2)}, 高: ${(table.top - table.bottom)?.toFixed(2)}\n\n`;
+
+    // 球位置信息
+    info += '=== 球位置 (后端坐标) ===\n';
+    const sortedBalls = Object.entries(gameState.balls).sort((a, b) => {
+        if (a[0] === 'cue') return -1;
+        if (b[0] === 'cue') return 1;
+        return parseInt(a[0]) - parseInt(b[0]);
+    });
+
+    for (const [id, ball] of sortedBalls) {
+        const status = ball.pocketed ? '[进袋]' : '[桌上]';
+        info += `${id.padEnd(4)}: (${ball.pos[0]?.toFixed(2)}, ${ball.pos[1]?.toFixed(2)}) ${status}\n`;
+    }
+
+    backendEl.textContent = info;
+}
+
+function updateDebugCanvas() {
+    if (!gameState) return;
+
+    const canvasEl = document.getElementById('debug-canvas');
+    let info = '';
+
+    // Canvas 信息
+    info += '=== Canvas 信息 ===\n';
+    info += `宽: ${canvas.width}, 高: ${canvas.height}\n`;
+    info += `Padding: ${CONFIG.TABLE_PADDING}\n\n`;
+
+    // 球桌画布坐标
+    const table = gameState.table;
+    const [leftX, topY] = toCanvas([table.left, table.top]);
+    const [rightX, bottomY] = toCanvas([table.right, table.bottom]);
+    info += '=== 球桌 (画布坐标) ===\n';
+    info += `左上: (${leftX.toFixed(2)}, ${topY.toFixed(2)})\n`;
+    info += `右下: (${rightX.toFixed(2)}, ${bottomY.toFixed(2)})\n`;
+    info += `宽: ${(rightX - leftX).toFixed(2)}, 高: ${(bottomY - topY).toFixed(2)}\n\n`;
+
+    // 球画布坐标
+    info += '=== 球位置 (画布坐标) ===\n';
+    const stateToRender = isAnimating && currentState ? currentState : gameState;
+    const sortedBalls = Object.entries(stateToRender.balls).sort((a, b) => {
+        if (a[0] === 'cue') return -1;
+        if (b[0] === 'cue') return 1;
+        return parseInt(a[0]) - parseInt(b[0]);
+    });
+
+    for (const [id, ball] of sortedBalls) {
+        if (ball.pocketed) continue;
+        const [x, y] = toCanvas(ball.pos);
+        info += `${id.padEnd(4)}: (${x.toFixed(2)}, ${y.toFixed(2)})\n`;
+    }
+
+    canvasEl.textContent = info;
+}
+
+function updateDebugInfo() {
+    updateDebugBackend();
+    updateDebugCanvas();
+}
+
 // ==================== 动画 ====================
 async function playAnimation(startState, endState) {
     isAnimating = true;
@@ -328,6 +434,7 @@ async function fetchState() {
         }
         updateUI();
         render();
+        updateDebugBackend();
         updateStatus('状态已更新');
     } catch (error) {
         updateStatus('获取状态失败：' + error.message);
@@ -399,6 +506,7 @@ async function executeBattleShot(action) {
             // 播放击球动画
             await playAnimation(result.start_state, result.end_state);
             gameState = result.end_state;
+            updateDebugInfo();
 
             // 记录击球信息到赛程
             const playerName = result.current_player === 'A' ? battleConfig.agentA : battleConfig.agentB;
@@ -588,6 +696,7 @@ async function executeShot(phi, v0) {
                 await playAnimation(result.start_state, result.end_state);
                 gameState = result.end_state;
                 updateUI();
+                updateDebugInfo();
                 if (result.message !== '击球完成') {
                     showPocketed(result.message);
                 }
@@ -630,6 +739,7 @@ async function resetGame() {
             gameState = result.state;
             updateUI();
             render();
+            updateDebugInfo();
             updateStatus('游戏已重置');
         }
     } catch (error) {
@@ -787,7 +897,10 @@ async function init() {
     // 初始化 Canvas 尺寸
     resizeCanvas();
     // 窗口大小变化时重新调整 Canvas
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        updateDebugInfo();
+    });
 
     await fetchState();
 

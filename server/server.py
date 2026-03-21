@@ -56,36 +56,6 @@ web_dir = os.path.join(os.path.dirname(__file__), '..', 'web')
 app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
 
-# ==================== 坐标转换函数 ====================
-def swap_coordinates_state(state: dict) -> dict:
-    """
-    转换状态中的所有坐标：交换 x 和 y
-    同时也交换桌子的 left/right 和 bottom/top
-    """
-    import copy
-    new_state = copy.deepcopy(state)
-
-    # 转换球的位置
-    if 'balls' in new_state:
-        for ball_id, ball in new_state['balls'].items():
-            if 'pos' in ball and len(ball['pos']) >= 2:
-                ball['pos'] = [ball['pos'][1], ball['pos'][0]]
-
-    # 转换桌子坐标
-    if 'table' in new_state:
-        table = new_state['table']
-        # 交换 left/right 和 bottom/top
-        new_table = {
-            'left': table.get('bottom', -3.5),
-            'right': table.get('top', 3.5),
-            'bottom': table.get('left', -7),
-            'top': table.get('right', 7)
-        }
-        new_state['table'] = new_table
-
-    return new_state
-
-
 class AgentType(str, Enum):
     """Supported agent types"""
     HUMAN = "human"
@@ -206,6 +176,46 @@ def clean_step_info(step_info: dict) -> dict:
     return cleaned
 
 
+def convert_pooltool_coords(pos_raw: list[float], table_l: float, table_w: float,
+                             target_left: float, target_right: float,
+                             target_bottom: float, target_top: float) -> list[float]:
+    """
+    将 pooltool 原始坐标转换为前端兼容坐标
+
+    硬编码转换逻辑（基于调试数据分析）：
+    - pooltool的x: 0.38-0.61 (宽度方向) -> 我们的y轴: -3.5到3.5
+    - pooltool的y: 0.45-1.68 (长度方向) -> 我们的x轴: -7到7
+
+    后续如需调整或移除硬编码，只需修改此函数。
+
+    Args:
+        pos_raw: pooltool原始坐标 [x, y]
+        table_l: pooltool球桌长度 (y轴方向)
+        table_w: pooltool球桌宽度 (x轴方向)
+        target_left/target_right/target_bottom/target_top: 目标坐标范围
+
+    Returns:
+        转换后的坐标 [x, y]
+    """
+    target_width = target_right - target_left
+    target_height = target_top - target_bottom
+
+    # 映射关系：
+    # pooltool的y -> 我们的x
+    # pooltool的x -> 我们的y
+    # pooltool原点在左下角，我们原点在中心
+    pos = [
+        (pos_raw[1] - table_l / 2.0) * (target_width / table_l),
+        (pos_raw[0] - table_w / 2.0) * (target_height / table_w)
+    ]
+
+    # 边界钳制：确保球在球桌范围内（保留0.2单位安全距离）
+    pos[0] = max(target_left + 0.2, min(target_right - 0.2, pos[0]))
+    pos[1] = max(target_bottom + 0.2, min(target_top - 0.2, pos[1]))
+
+    return pos
+
+
 # ============== Battle State Management ==============
 
 class BattleState:
@@ -323,34 +333,55 @@ class BattleState:
     def get_ball_state(self) -> dict:
         """Get simplified ball state compatible with frontend render"""
         balls = {}
-        # 坐标缩放系数：pooltool单位是米，mock接口是分米，放大10倍匹配前端坐标范围
-        COORD_SCALE = 7.0  # 调整到和mock接口一致的范围
+
+        # 获取pooltool球桌的真实尺寸
+        # pooltool中：table.l是长度(x轴方向)，table.w是宽度(y轴方向)
+        table_l = 1.9812  # 默认值：约78英寸 (2.0193米，但实际pooltool可能是1.9812米)
+        table_w = 0.9906   # 默认值：约39英寸 (1.00965米，但实际pooltool可能是0.9906米)
+
+        if hasattr(self.env.table, 'l'):
+            table_l = self.env.table.l
+        if hasattr(self.env.table, 'w'):
+            table_w = self.env.table.w
+
+        # 目标坐标范围（与mock接口一致）
+        target_left = -7.0
+        target_right = 7.0
+        target_bottom = -3.5
+        target_top = 3.5
+        target_width = target_right - target_left
+        target_height = target_top - target_bottom
+
+        # 计算缩放比例
+        scale_x = target_width / table_l
+        scale_y = target_height / table_w
+
         for ball_id, ball in self.env.balls.items():
             # 获取球位置 - 优先从pooltool的rvw中获取
-            pos = [0, 0]
+            pos_raw = [0.0, 0.0]
             if hasattr(ball, 'state') and hasattr(ball.state, 'rvw'):
-                # pooltool格式：rvw[0]是位置[x, y, z]，单位米，缩放后匹配前端
-                pos = [ball.state.rvw[0][0] * COORD_SCALE, ball.state.rvw[0][1] * COORD_SCALE]
+                # pooltool格式：rvw[0]是位置[x, y, z]，单位米
+                pos_raw = [ball.state.rvw[0][0], ball.state.rvw[0][1]]
             elif hasattr(ball, 'x') and hasattr(ball, 'y'):
-                pos = [ball.x * COORD_SCALE, ball.y * COORD_SCALE]
+                pos_raw = [ball.x, ball.y]
             elif hasattr(ball, 'pos'):
-                pos = [ball.pos[0] * COORD_SCALE, ball.pos[1] * COORD_SCALE]
+                pos_raw = [ball.pos[0], ball.pos[1]]
             elif hasattr(ball, 'state'):
                 state = ball.state
                 if hasattr(state, 'x') and hasattr(state, 'y'):
-                    pos = [state.x * COORD_SCALE, state.y * COORD_SCALE]
+                    pos_raw = [state.x, state.y]
                 elif hasattr(state, 'pos'):
-                    pos = [state.pos[0] * COORD_SCALE, state.pos[1] * COORD_SCALE]
+                    pos_raw = [state.pos[0], state.pos[1]]
                 elif hasattr(state, 'rv'):
-                    pos = [state.rv[0] * COORD_SCALE, state.rv[1] * COORD_SCALE]
+                    pos_raw = [state.rv[0], state.rv[1]]
                 elif hasattr(state, '__getitem__'):
-                    pos = [state[0] * COORD_SCALE, state[1] * COORD_SCALE]
+                    pos_raw = [state[0], state[1]]
 
-            # 调试：打印ball的属性
-            # if ball_id == 'cue':
-            #     print(f"Ball {ball_id} attributes: {dir(ball)}")
-            #     if hasattr(ball, 'state'):
-            #         print(f"Ball state attributes: {dir(ball.state)}")
+            # 使用单独的转换函数进行坐标转换
+            pos = convert_pooltool_coords(
+                pos_raw, table_l, table_w,
+                target_left, target_right, target_bottom, target_top
+            )
 
             # 检测是否已经进袋
             # pooltool 中：ball.state.s == 4 表示进袋
@@ -383,13 +414,12 @@ class BattleState:
                 'team': team
             }
 
-        # 获取桌台信息，保持和mock接口一致的坐标范围
-        # 直接使用和mock接口一致的标准尺寸，确保比例正确
+        # 使用目标范围作为桌台信息
         table_info = {
-            'left': -7,
-            'right': 7,
-            'bottom': -3.5,
-            'top': 3.5
+            'left': target_left,
+            'right': target_right,
+            'bottom': target_bottom,
+            'top': target_top
         }
 
         # 计算得分
@@ -411,7 +441,7 @@ class BattleState:
             'red_score': red_score,
             'yellow_score': yellow_score
         }
-        return swap_coordinates_state(state)
+        return state
 
 
 # Battle storage
@@ -551,7 +581,7 @@ async def root() -> HTMLResponse:
 @app.get("/api/state")
 async def get_state() -> dict:
     """获取当前游戏状态"""
-    return swap_coordinates_state(get_initial_state())
+    return get_initial_state()
 
 
 @app.post("/api/shot", response_model=ShotResponse)
@@ -574,8 +604,8 @@ async def execute_shot(request: ShotRequest) -> ShotResponse:
 
         return ShotResponse(
             success=True,
-            start_state=swap_coordinates_state(start_state),
-            end_state=swap_coordinates_state(end_state),
+            start_state=start_state,
+            end_state=end_state,
             message=message
         )
     except Exception as e:
@@ -585,7 +615,7 @@ async def execute_shot(request: ShotRequest) -> ShotResponse:
 @app.post("/api/reset")
 async def reset_game() -> dict:
     """重置游戏"""
-    return {"success": True, "state": swap_coordinates_state(get_initial_state())}
+    return {"success": True, "state": get_initial_state()}
 
 
 @app.post("/api/battle/start", response_model=BattleStartResponse)
@@ -713,8 +743,8 @@ async def battle_next(battle_id: str, request: BattleNextRequest) -> BattleNextR
         current_player=battle.current_player,
         winner=battle.winner,
         message=msg,
-        start_state=start_state,
-        end_state=end_state,
+        start_state=start_state if start_state else None,
+        end_state=end_state if end_state else None,
         target_ball=battle.target_ball,
         current_game=battle.current_game
     )

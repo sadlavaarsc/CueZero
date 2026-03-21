@@ -36,7 +36,7 @@
             margin-bottom: 20px;
         }
 
-        /* 台球桌容器 - 保持 2:1 比例 */
+        /* 台球桌容器 - 保持 2:1 比例（横屏）*/
         .game-container {
             position: relative;
             /* 保持 2:1 宽高比 */
@@ -400,6 +400,91 @@
         <div class="log-entry">选择对战双方和局数，点击"开始对战"开始比赛</div>
         <div class="log-entry">或直接点击白球进行自由练习</div>
     </div>
+
+    <!-- 调试信息面板 -->
+    <div class="debug-panel" id="debug-panel">
+        <div class="debug-header" onclick="toggleDebugPanel()">
+            <span>🔍 调试信息</span>
+            <span id="debug-toggle">▼</span>
+        </div>
+        <div class="debug-content" id="debug-content">
+            <div class="debug-section">
+                <div class="debug-title">📡 后端原始数据</div>
+                <pre id="debug-backend">等待数据...</pre>
+            </div>
+            <div class="debug-section">
+                <div class="debug-title">🎨 画布渲染坐标</div>
+                <pre id="debug-canvas">等待渲染...</pre>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .debug-panel {
+            margin-top: 20px;
+            width: min(75vw, 800px);
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        .debug-header {
+            padding: 10px 15px;
+            background: rgba(79, 195, 247, 0.1);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: #4fc3f7;
+        }
+        .debug-header:hover {
+            background: rgba(79, 195, 247, 0.2);
+        }
+        .debug-content {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            max-height: 300px;
+            overflow: auto;
+        }
+        .debug-content.collapsed {
+            display: none;
+        }
+        .debug-section {
+            flex: 1;
+            min-width: 0;
+        }
+        .debug-title {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .debug-panel pre {
+            margin: 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            line-height: 1.4;
+            color: #aaa;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 220px;
+            overflow: auto;
+        }
+        @media (max-width: 480px) {
+            .debug-panel {
+                width: 95vw;
+            }
+            .debug-content {
+                flex-direction: column;
+            }
+        }
+    </style>
 
     <script src="/static/app.js"></script>
 </body>
