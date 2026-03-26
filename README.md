@@ -1,17 +1,45 @@
-# CueZero: High-Performance Billiards AI System
+<div align="center">
 
-[English](./README.md) | [中文](./README_zh.md)
+# CueZero
 
-![Python](https://img.shields.io/badge/python-3.13-blue)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0-red)
-![MCTS](https://img.shields.io/badge/MCTS-Continuous-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
+</div>
+
+---
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.13-blue?style=flat-square)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0-red?style=flat-square)
+![MCTS](https://img.shields.io/badge/MCTS-Continuous-orange?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
+📖 [English](./README.md) • [中文](./README_zh.md)
+
+</div>
+
+---
+
+<div align="center">
+
+**CueZero is a high-performance billiards AI system combining deep reinforcement learning with continuous-action Monte Carlo Tree Search.**
+
+It solves decision-making in high-dimensional continuous state and action spaces with complex physics dynamics, achieving **95% win rate** against rule-based agents with a compact **~160K parameter** model.
+
+</div>
+
+---
+
+<div align="center">
+
+[Overview](#-project-overview) • [Key Results](#-key-results) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Usage](#-usage-examples)
+
+</div>
+
+---
 
 ![Demo](./assets/demo.gif)
 
 ## 📌 Project Overview
-
-CueZero is a high-performance billiards AI system that combines deep reinforcement learning with a specially engineered continuous-action Monte Carlo Tree Search (MCTS). It solves the challenging problem of decision-making in a high-dimensional continuous state and action space with complex physics dynamics.
 
 **Key Highlights**:
 - 81-dimensional state representation, 5-dimensional continuous action space
