@@ -1,3 +1,5 @@
+![Demo](./assets/demo.gif)
+
 <div align="center">
 
 # CueZero
@@ -17,8 +19,6 @@
 
 </div>
 
----
-
 <div align="center">
 
 **CueZero is a high-performance billiards AI system combining deep reinforcement learning with continuous-action Monte Carlo Tree Search.**
@@ -36,8 +36,6 @@ It solves decision-making in high-dimensional continuous state and action spaces
 </div>
 
 ---
-
-![Demo](./assets/demo.gif)
 
 ## 📌 Project Overview
 

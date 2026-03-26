@@ -1,17 +1,43 @@
-# CueZero: 高性能台球 AI 系统
-
-[English](./README.md) | [中文](./README_zh.md)
-
-![Python](https://img.shields.io/badge/python-3.13-blue)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0-red)
-![MCTS](https://img.shields.io/badge/MCTS-Continuous-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
-
 ![Demo](./assets/demo.gif)
 
-## 📌 项目概述
+<div align="center">
 
-CueZero 是一个高性能台球 AI 系统，将深度强化学习与专门设计的连续动作蒙特卡洛树搜索（MCTS）相结合。它解决了在高维连续状态和动作空间中进行决策的难题，同时处理复杂的物理动力学。
+# CueZero
+
+</div>
+
+---
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.13-blue?style=flat-square)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0-red?style=flat-square)
+![MCTS](https://img.shields.io/badge/MCTS-Continuous-orange?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
+📖 [English](./README.md) • [中文](./README_zh.md)
+
+</div>
+
+<div align="center">
+
+**CueZero 是一个高性能台球 AI 系统，将深度强化学习与连续动作蒙特卡洛树搜索相结合。**
+
+它解决了在高维连续状态和动作空间中进行决策的难题，同时处理复杂的物理动力学，使用紧凑的 **约 160K 参数** 模型对抗规则型 Agent 达到 **95% 胜率**。
+
+</div>
+
+---
+
+<div align="center">
+
+[项目概述](#-项目概述) • [核心成果](#-核心成果) • [快速开始](#-快速开始) • [系统架构](#-系统架构) • [使用示例](#-使用示例)
+
+</div>
+
+---
+
+## 📌 项目概述
 
 **核心亮点**：
 - 81 维状态表示，5 维连续动作空间
